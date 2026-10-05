@@ -1,0 +1,48 @@
+:root { font-family: system-ui, sans-serif; color: #dfE7f2; background: #101722; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 850px; margin: 48px auto; padding: 0 20px; }
+header { margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.eyebrow { color: #86b5a3; font-size: .75rem; letter-spacing: .14em; }
+h1 { font-size: 2.3rem; margin: 8px 0; letter-spacing: -.04em; }
+h2 { margin: 0 0 20px; font-size: 1.1rem; }
+h3, .label { color: #a4b2c5; font-size: .8rem; font-weight: 500; }
+section { background: #182230; border: 1px solid #2b394c; border-radius: 12px; padding: 24px; margin-bottom: 18px; }
+.label { margin: 0 0 8px; }
+.path { overflow-wrap: anywhere; margin: 0 0 22px; font-family: monospace; }
+#current-branch { color: #a6e6cc; margin: 0 0 24px; font-family: monospace; }
+.actions, .switch-row { display: flex; gap: 10px; }
+button { border: 1px solid #518f79; border-radius: 7px; padding: 10px 22px; background: #234f42; color: #e6fff4; font: inherit; cursor: pointer; }
+button:hover { background: #306652; }
+button:disabled, input:disabled, select:disabled { opacity: .5; cursor: wait; }
+label { display: block; font-size: .9rem; margin-bottom: 9px; }
+input, select { width: 100%; min-width: 0; border: 1px solid #43536a; border-radius: 7px; padding: 11px; background: #101722; font: inherit; color: inherit; }
+select { margin-bottom: 22px; }
+.hint { font-size: .8rem; color: #a4b2c5; line-height: 1.5; }
+:focus-visible { outline: 2px solid #a6e6cc; outline-offset: 3px; }
+.result-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+#operation-state { font-size: .8rem; }
+.success { color: #a6e6cc; }
+.error, #stderr { color: #ffb1aa; }
+pre { background: #0f1620; padding: 16px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; font-size: .85rem; max-height: 450px; overflow: auto; }
+@media (max-width: 500px) { main { margin: 24px auto; } section { padding: 18px; } button { padding: 10px 16px; } .result-heading { display: block; } }
+[hidden] { display: none !important; }
+#settings-form input, #button-form input { margin-bottom: 18px; }
+#behind-count { color: #a6e6cc; font-size: 1.8rem; font-weight: 600; margin: 0; }
+#behind-details { margin-bottom: 18px; }
+summary { cursor: pointer; font-size: .85rem; }
+.actions { flex-wrap: wrap; }
+.custom-buttons { display: grid; gap: 12px; margin-bottom: 22px; }
+.custom-button-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.custom-button-row code { flex: 1; min-width: 120px; overflow-wrap: anywhere; font-size: .8rem; color: #a4b2c5; }
+.secondary { padding: 8px 12px; background: transparent; border-color: #43536a; font-size: .8rem; }
+.shortcuts { margin-top: 14px; padding-top: 14px; border-top: 1px solid #2b394c; }
+dialog { width: min(640px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 24px; color: #dfe7f2; background: #182230; border: 1px solid #43536a; border-radius: 12px; box-shadow: 0 24px 80px #0008; overflow-y: auto; }
+dialog::backdrop { background: #060b14b8; backdrop-filter: blur(4px); }
+body:has(dialog[open]) { overflow: hidden; }
+.modal-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.modal-heading h2 { margin: 0; }
+.modal-feedback { font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: 18px 0 0; }
+.button-label { width: 100%; font-weight: 600; overflow-wrap: anywhere; }
+.custom-button-row { border-bottom: 1px solid #2b394c; padding-bottom: 14px; }
+@media (max-width: 500px) { dialog { padding: 18px; } }
