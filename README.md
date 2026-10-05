@@ -16,7 +16,7 @@ Configure `gitPath` e `repoPath` diretamente no painel e clique em **Salvar conf
 ```json
 {
   "gitPath": "git",
-  "repoPath": "D:\\SGA"
+  "repoPath": "D:\\APP"
 }
 ```
 
