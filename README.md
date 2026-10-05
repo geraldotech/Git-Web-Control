@@ -65,4 +65,10 @@ Respostas incluem `success`, `code`, `stdout` e `stderr`. Branches também retor
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
+### Git comandos uteis
+
+```bash
+git rev-list --count "HEAD..@{u}" # contar commits que estão no upstream mas não localmente
+```
+
 Os testes usam repositórios temporários, sem modificar o repositório configurado.

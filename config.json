@@ -1,5 +1,10 @@
 {
   "gitPath": "git",
   "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
-  "buttons": []
+  "buttons": [
+    {
+      "label": "tag",
+      "command": "git tag"
+    }
+  ]
 }
