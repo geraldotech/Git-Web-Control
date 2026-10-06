@@ -5,6 +5,10 @@
     {
       "label": "tag",
       "command": "git tag"
+    },
+    {
+      "label": "últimos commits",
+      "command": "git log -10 --oneline"
     }
   ]
 }
