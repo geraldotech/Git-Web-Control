@@ -19,6 +19,7 @@ async function api(path, body) {
 function showResult(data, command) {
   $('#stdout').textContent = data.stdout || '—';
   $('#stderr').textContent = data.stderr || '—';
+  $('#stderr-block').hidden = !(data.stderr || '').trim();
   $('#operation-state').textContent = `${command}: ${data.success ? 'concluído' : 'falhou'} (código ${data.code})`;
   $('#operation-state').className = data.success ? 'success' : 'error';
   const feedback = $('dialog[open] .modal-feedback');
@@ -35,11 +36,16 @@ async function refreshRepository() {
   select.replaceChildren(new Option('Selecione uma branch', ''));
   $('#current-branch').textContent = data.success ? (data.currentBranch || 'HEAD destacado') : 'Indisponível';
   if (data.success) {
-    for (const branch of data.branches) select.add(new Option(branch, branch));
-    select.value = data.currentBranch;
+    const branches = [...data.branches].sort((a, b) => (a === data.currentBranch ? -1 : b === data.currentBranch ? 1 : a.localeCompare(b)));
+    for (const branch of branches) {
+      select.add(new Option(branch === data.currentBranch ? `${branch} (atual)` : branch, branch));
+    }
+    $('#branch-name').placeholder = data.currentBranch ? `Ex.: ${data.currentBranch}` : 'Ex.: main';
   }
   const behind = await api('git/behind');
-  $('#behind-count').textContent = behind.success ? String(behind.count) : 'Indisponível';
+  const count = $('#behind-count');
+  count.textContent = behind.success ? String(behind.count) : 'Indisponível';
+  count.classList.toggle('pending', behind.success && behind.count > 0);
   $('#behind-details').hidden = behind.success;
   $('#behind-error').textContent = behind.stderr || '';
 }
