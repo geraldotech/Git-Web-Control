@@ -3,11 +3,11 @@
   "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
   "buttons": [
     {
-      "label": "tag",
+      "label": "Tag",
       "command": "git tag"
     },
     {
-      "label": "últimos commits",
+      "label": "Últimos",
       "command": "git log -10 --oneline"
     }
   ]

@@ -1,7 +1,7 @@
 :root { font-family: system-ui, sans-serif; color: #dfe7f2; background: #101722; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-main { max-width: 1180px; margin: 40px auto; padding: 0 24px; }
+main { max-width: 1180px; margin: 0px auto; padding: 0 24px; }
 header { margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
 .eyebrow { color: #86b5a3; font-size: .75rem; letter-spacing: .14em; }
 h1 { font-size: 2.3rem; margin: 8px 0 0; letter-spacing: -.04em; }
