@@ -32,23 +32,27 @@
           <dd class="count" id="behind-count" role="status">Carregando…</dd>
         </div>
       </dl>
-      <div class="toolbar">
-        <form id="switch-form" class="inline-form">
-          <label class="sr-only" for="branch-select">Trocar branch</label>
-          <select id="branch-select" aria-label="Branches locais"><option value="">Selecione uma branch</option></select>
-          <input id="branch-name" maxlength="255" required placeholder="Ex.: main" autocomplete="off" spellcheck="false" aria-label="Nome da branch">
-          <button type="submit">Switch</button>
-        </form>
-        <div class="actions">
-          <button data-command="status">Status</button>
-          <button data-command="fetch">Fetch</button>
-          <button data-command="pull">Pull</button>
-        </div>
+      <div class="actions">
+        <button type="button" id="open-switch" aria-haspopup="dialog">Switch</button>
+        <button data-command="status">Status</button>
+        <button data-command="fetch">Fetch</button>
+        <button data-command="pull">Pull</button>
       </div>
       <div id="custom-buttons" class="actions shortcuts" aria-label="Atalhos personalizados" hidden></div>
-      <p class="hint">HEAD..@{u} · Use Fetch para atualizar as referências remotas. Escolher na lista preenche o campo; o Switch confirma a troca.</p>
+      <p class="hint">HEAD..@{u} · A busca no remoto acontece sozinha ao abrir a página (Fetch força uma nova busca). Switch abre a troca de branch com a lista e o campo para digitar.</p>
+      <p class="hint" id="auto-fetch-state" role="status" aria-live="polite" hidden></p>
       <details id="behind-details" hidden><summary>Motivo da contagem indisponível</summary><pre id="behind-error"></pre></details>
     </section>
+    <dialog id="switch-dialog" aria-labelledby="switch-title">
+      <div class="modal-heading"><h2 id="switch-title">Trocar branch</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar troca de branch">Fechar</button></div>
+      <ul id="branch-options" class="branch-list" aria-label="Branches"></ul>
+      <form id="switch-form">
+        <label for="branch-name">Nome da branch</label>
+        <div class="switch-row"><input id="branch-name" maxlength="255" placeholder="Ex.: main" autocomplete="off" spellcheck="false" enterkeyhint="go"><button type="submit">Switch</button></div>
+        <p class="hint">Selecione uma branch na lista ou digite o nome — inclusive de uma branch remota disponível após Fetch.</p>
+      </form>
+      <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
+    </dialog>
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-heading"><h2 id="settings-title">Configuração</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar configuração">Fechar</button></div>
       <form id="settings-form">

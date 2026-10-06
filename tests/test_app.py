@@ -84,12 +84,29 @@ class GitAppTests(unittest.TestCase):
         self.git("branch", "remote-feature", cwd=other)
         self.git("push", "origin", "remote-feature", cwd=other)
         self.assertTrue(self.post("fetch").json["success"])
+        branches = self.client.get("/api/git/branches").json
+        self.assertEqual(branches["branches"], ["feature/test", "main"])
+        # Branches remotas entram pelo nome curto: `git switch origin/x` é recusado pelo Git,
+        # mas `git switch x` cria a branch local a partir da remota (origin/main fica de fora
+        # porque já existe localmente).
+        self.assertEqual(branches["remoteBranches"], ["remote-feature"])
         self.assertEqual(self.client.get("/api/git/behind").json["count"], 1)
         self.assertFalse((self.repo / "remote.txt").exists())
         self.assertTrue(self.post("pull").json["success"])
         self.assertEqual(self.client.get("/api/git/behind").json["count"], 0)
         self.assertEqual((self.repo / "remote.txt").read_text(), "from remote")
+        # A busca automática do painel atualiza as referências sem clique em Fetch.
+        (other / "auto.txt").write_text("auto")
+        self.git("add", ".", cwd=other)
+        self.git("commit", "-m", "commit novo", cwd=other)
+        self.git("push", cwd=other)
+        self.assertEqual(self.client.get("/api/git/behind").json["count"], 0)
+        self.assertTrue(self.post("autofetch").json["success"])
+        self.assertEqual(self.client.get("/api/git/behind").json["count"], 1)
+        # Troca criando a branch local a partir da remota, como a lista da interface oferece.
         self.assertTrue(self.post("switch", json={"branch": "remote-feature"}).json["success"])
+        self.assertEqual(self.git("branch", "--show-current"), "remote-feature")
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "remote-feature@{u}"), "origin/remote-feature")
 
     def test_invalid_configuration(self):
         for settings in ({"repoPath": str(self.root)},
@@ -121,6 +138,12 @@ class GitAppTests(unittest.TestCase):
         self.assertFalse(response.json["success"])
         self.assertIsNone(response.json["count"])
         self.assertTrue(response.json["stderr"])
+
+    def test_autofetch_without_remote_is_a_noop(self):
+        # `git fetch` sem remoto sai com código 0 (nada a buscar), então não vira erro no painel.
+        response = self.post("autofetch")
+        self.assertTrue(response.json["success"], response.json)
+        self.assertIsNone(self.client.get("/api/git/behind").json["count"])
 
     def test_settings_save_apply_and_reload(self):
         other = self.root / "another repo"

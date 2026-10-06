@@ -34,12 +34,16 @@ summary { cursor: pointer; font-size: .85rem; }
 .count { color: #a6e6cc; font-size: 1.4rem; font-weight: 600; line-height: 1.3; }
 .count.pending { color: #ffd48a; }
 
-/* Barra de ações e troca de branch */
-.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-.inline-form { display: flex; flex: 1 1 420px; gap: 8px; align-items: center; }
-.inline-form select { width: auto; flex: 0 1 220px; }
-.inline-form input { width: auto; flex: 1 1 160px; }
-.inline-form button { flex: 0 0 auto; }
+/* Troca de branch: lista dentro do diálogo */
+.switch-row { display: flex; gap: 10px; }
+.switch-row input { flex: 1 1 auto; }
+.branch-list { display: grid; gap: 4px; margin: 0 0 20px; padding: 0; list-style: none; max-height: 240px; overflow: auto; }
+.branch-group { padding: 8px 2px 2px; color: #a4b2c5; font-size: .68rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+.branch-option { display: block; width: 100%; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: #131c27; color: inherit; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85rem; text-align: left; overflow-wrap: anywhere; }
+.branch-option:hover { background: #223047; border-color: #43536a; }
+.branch-option.current { color: #a6e6cc; }
+.branch-option .tag { margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: #234f42; color: #a6e6cc; font-family: system-ui, sans-serif; font-size: .65rem; }
+.branch-empty { padding: 4px 2px; color: #a4b2c5; font-size: .85rem; }
 .shortcuts { margin-top: 16px; padding-top: 16px; border-top: 1px solid #2b394c; }
 #behind-details { margin-top: 12px; }
 
@@ -72,10 +76,9 @@ body:has(dialog[open]) { overflow: hidden; }
   section { padding: 18px; }
   .stats { grid-template-columns: 1fr; }
   .stat:first-child { grid-column: auto; }
-  .toolbar, .inline-form, .command-row { flex-direction: column; align-items: stretch; }
-  /* Na coluna a base flex vira altura: zera o crescimento para os campos não esticarem. */
-  .inline-form, .inline-form select, .inline-form input, .command-row input { flex: 0 0 auto; }
-  .inline-form select, .inline-form input { width: 100%; }
+  .switch-row, .command-row { flex-direction: column; align-items: stretch; }
+  .switch-row input, .command-row input { flex: 0 0 auto; }
+  .branch-list { max-height: 200px; }
   .result-heading { flex-direction: column; gap: 4px; }
   button { padding: 10px 16px; }
   dialog { padding: 18px; }

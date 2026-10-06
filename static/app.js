@@ -3,6 +3,10 @@ const token = $('meta[name="csrf-token"]').content;
 let buttons = [];
 let editing = null;
 let busy = false;
+let branchData = { branches: [], remoteBranches: [], currentBranch: '' };
+let autoFetching = false;
+let lastAutoFetch = 0;
+const AUTO_FETCH_INTERVAL = 30000;
 
 async function api(path, body) {
   const mutation = body !== undefined;
@@ -11,7 +15,13 @@ async function api(path, body) {
     headers: mutation ? { 'Content-Type': 'application/json', 'X-CSRF-Token': token } : {},
     ...(mutation ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await response.json();
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Resposta inesperada do servidor (HTTP ${response.status}).`);
+  }
   if (!response.ok && data.success !== false) throw new Error(`Erro HTTP ${response.status}`);
   return data;
 }
@@ -32,22 +42,57 @@ function showResult(data, command) {
 
 async function refreshRepository() {
   const data = await api('git/branches');
-  const select = $('#branch-select');
-  select.replaceChildren(new Option('Selecione uma branch', ''));
-  $('#current-branch').textContent = data.success ? (data.currentBranch || 'HEAD destacado') : 'Indisponível';
+  const current = data.success ? (data.currentBranch || '') : '';
+  const local = data.success ? data.branches : [];
+  branchData = {
+    branches: [...local].sort((a, b) => (a === current ? -1 : b === current ? 1 : a.localeCompare(b))),
+    remoteBranches: data.success ? (data.remoteBranches || []) : [],
+    currentBranch: current,
+  };
+  $('#current-branch').textContent = data.success ? (current || 'HEAD destacado') : 'Indisponível';
   if (data.success) {
-    const branches = [...data.branches].sort((a, b) => (a === data.currentBranch ? -1 : b === data.currentBranch ? 1 : a.localeCompare(b)));
-    for (const branch of branches) {
-      select.add(new Option(branch === data.currentBranch ? `${branch} (atual)` : branch, branch));
-    }
-    $('#branch-name').placeholder = data.currentBranch ? `Ex.: ${data.currentBranch}` : 'Ex.: main';
+    $('#branch-name').placeholder = current ? `Ex.: ${current}` : 'Ex.: main';
   }
+  if ($('#switch-dialog').open) renderBranchList();
   const behind = await api('git/behind');
   const count = $('#behind-count');
   count.textContent = behind.success ? String(behind.count) : 'Indisponível';
   count.classList.toggle('pending', behind.success && behind.count > 0);
   $('#behind-details').hidden = behind.success;
   $('#behind-error').textContent = behind.stderr || '';
+}
+
+// Busca o remoto sem clique: ao abrir a página e ao voltar para a aba (com intervalo mínimo).
+async function fetchFromRemote(force = false) {
+  if (busy || autoFetching) return;
+  if (!force && Date.now() - lastAutoFetch < AUTO_FETCH_INTERVAL) return;
+  autoFetching = true;
+  lastAutoFetch = Date.now();
+  const state = $('#auto-fetch-state');
+  state.hidden = false;
+  state.className = 'hint';
+  state.textContent = 'Buscando referências do remoto…';
+  let fetched = false;
+  try {
+    const data = await api('git/autofetch', {});
+    fetched = data.success;
+    if (data.success) {
+      state.className = 'hint success';
+      state.textContent = 'Referências remotas atualizadas automaticamente.';
+    } else {
+      const detail = (data.stderr || '').trim().split('\n')[0];
+      state.className = 'hint error';
+      state.textContent = `Busca automática falhou: ${detail || `código ${data.code}`}`;
+    }
+  } catch (error) {
+    state.className = 'hint error';
+    state.textContent = `Busca automática falhou: ${error.message}`;
+  } finally {
+    autoFetching = false;
+  }
+  // Sem isto o stdout continuaria mostrando o status calculado antes da busca.
+  if (fetched) showResult(await api('git/status'), 'status');
+  await refreshRepository();
 }
 
 async function perform(label, task) {
@@ -57,7 +102,7 @@ async function perform(label, task) {
   const feedback = $('dialog[open] .modal-feedback');
   if (feedback) {
     feedback.hidden = false;
-    feedback.textContent = 'Salvando…';
+    feedback.textContent = `${label}…`;
     feedback.className = 'modal-feedback';
   }
   $('#operation-state').textContent = `Executando ${label}…`;
@@ -144,6 +189,74 @@ function saveButtons(nextButtons) {
   });
 }
 
+function renderBranchList() {
+  const list = $('#branch-options');
+  list.replaceChildren();
+  let total = 0;
+  for (const [title, names] of [['Locais', branchData.branches], ['Remotas', branchData.remoteBranches]]) {
+    if (!names.length) continue;
+    const heading = document.createElement('li');
+    heading.className = 'branch-group';
+    heading.textContent = title;
+    list.append(heading);
+    for (const name of names) {
+      total += 1;
+      const current = name === branchData.currentBranch;
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = current ? 'branch-option current' : 'branch-option';
+      option.dataset.branch = name;
+      option.textContent = name;
+      if (current) {
+        option.setAttribute('aria-label', `${name} (branch atual)`);
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.setAttribute('aria-hidden', 'true');
+        tag.textContent = 'atual';
+        option.append(tag);
+      }
+      option.addEventListener('click', () => chooseBranch(name));
+      const item = document.createElement('li');
+      item.append(option);
+      list.append(item);
+    }
+  }
+  if (!total) {
+    const empty = document.createElement('li');
+    empty.className = 'branch-empty';
+    empty.textContent = 'Nenhuma branch encontrada. Use Fetch para atualizar as referências remotas.';
+    list.append(empty);
+  }
+}
+
+function openSwitchDialog() {
+  const dialog = $('#switch-dialog');
+  dialog.querySelector('.modal-feedback').hidden = true;
+  $('#branch-name').value = '';
+  renderBranchList();
+  dialog.showModal();
+  $('#branch-name').focus();
+}
+
+function chooseBranch(name) {
+  $('#branch-name').value = name;
+  submitSwitch();
+}
+
+function submitSwitch() {
+  const branch = $('#branch-name').value.trim();
+  if (!branch) { $('#branch-name').focus(); return; }
+  return perform('troca de branch', async () => {
+    const data = await api('git/switch', { branch });
+    showResult(data, branch);
+    if (data.success) {
+      $('#branch-name').value = '';
+      $('#switch-dialog').close();
+    }
+    await refreshRepository();
+  });
+}
+
 document.querySelectorAll('[data-open-dialog]').forEach((button) => {
   button.addEventListener('click', () => {
     const dialog = document.getElementById(button.dataset.openDialog);
@@ -165,11 +278,8 @@ document.querySelectorAll('dialog').forEach((dialog) => {
 document.querySelectorAll('[data-command]').forEach((button) => {
   button.addEventListener('click', () => execute(button.dataset.command));
 });
-$('#branch-select').addEventListener('change', (event) => { $('#branch-name').value = event.target.value; });
-$('#switch-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  execute('switch', { branch: $('#branch-name').value });
-});
+$('#open-switch').addEventListener('click', openSwitchDialog);
+$('#switch-form').addEventListener('submit', (event) => { event.preventDefault(); submitSwitch(); });
 $('#console-form').addEventListener('submit', (event) => {
   event.preventDefault();
   execute('console', { command: $('#console-command').value });
@@ -204,4 +314,8 @@ perform('Carregar painel', async () => {
   renderButtons();
   showResult(await api('git/status'), 'status');
   await refreshRepository();
+}).then(() => fetchFromRemote(true));
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) fetchFromRemote();
 });

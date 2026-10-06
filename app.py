@@ -24,6 +24,8 @@ def result(code=0, stdout="", stderr=""):
 def create_app(config_path=None, *, settings=None):
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 65536
+    # Sem debug o Jinja guarda o template em memória; recarregar evita servir HTML antigo após edições.
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
     token = secrets.token_urlsafe(32)
     lock = threading.Lock()
     config_error = None
@@ -59,7 +61,7 @@ def create_app(config_path=None, *, settings=None):
     if not isinstance(settings.get("buttons"), list):
         settings["buttons"] = []
 
-    def run(args, *, executable=None, directory=None):
+    def run(args, *, executable=None, directory=None, timeout=120):
         # Não herdar variáveis capazes de redirecionar o repositório configurado.
         env = {key: value for key, value in os.environ.items()
                if not key.upper().startswith("GIT_")}
@@ -70,11 +72,11 @@ def create_app(config_path=None, *, settings=None):
                 [executable or git_path, "--no-pager", *args],
                 cwd=directory or repo_path, capture_output=True,
                 text=True, encoding="utf-8", errors="replace", shell=False,
-                timeout=120, env=env, stdin=subprocess.DEVNULL,
+                timeout=timeout, env=env, stdin=subprocess.DEVNULL,
             )
             return result(process.returncode, process.stdout, process.stderr)
         except subprocess.TimeoutExpired:
-            return result(-1, stderr="Tempo limite de 120 segundos excedido ao executar Git.")
+            return result(-1, stderr=f"Tempo limite de {timeout} segundos excedido ao executar Git.")
         except OSError as exc:
             return result(-1, stderr=f"Não foi possível executar Git: {exc}")
 
@@ -230,6 +232,12 @@ def create_app(config_path=None, *, settings=None):
     def fetch():
         return execute(lambda: run(COMMANDS["fetch"]))
 
+    @app.post("/api/git/autofetch")
+    def autofetch():
+        # Usado pelo painel ao abrir a página: prazo curto para não segurar o lock do Git
+        # quando o remoto (VPN) está fora; a falha é exibida, não interrompe o carregamento.
+        return execute(lambda: run(COMMANDS["fetch"], timeout=30))
+
     @app.post("/api/git/pull")
     def pull():
         return execute(lambda: run(COMMANDS["pull"]))
@@ -242,7 +250,20 @@ def create_app(config_path=None, *, settings=None):
                 current = run(["branch", "--show-current"])
                 if not current["success"]:
                     return current
-                output.update(branches=output["stdout"].splitlines(), currentBranch=current["stdout"].strip())
+                local = [name for name in output["stdout"].splitlines() if name]
+                # `git switch nome` cria a branch local a partir da remota (DWIM), mas recusa o
+                # nome qualificado (origin/x). Só entram nomes sem equivalente local e presentes
+                # em um único remoto, para não oferecer uma opção ambígua.
+                remotes = run(["branch", "-r", "--format=%(refname:short)"])
+                counts = {}
+                for name in (remotes["stdout"].splitlines() if remotes["success"] else []):
+                    if not name or name.endswith("/HEAD"):
+                        continue
+                    short = name.split("/", 1)[-1]
+                    if short not in local:
+                        counts[short] = counts.get(short, 0) + 1
+                remote = sorted(short for short, count in counts.items() if count == 1)
+                output.update(branches=local, remoteBranches=remote, currentBranch=current["stdout"].strip())
             return output
         return execute(action)
 
