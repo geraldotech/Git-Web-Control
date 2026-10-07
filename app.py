@@ -293,7 +293,7 @@ def create_app(config_path=None, *, settings=None):
                         output = validate_repo() or run(["pull"])
                     except (OSError, ValueError, TypeError) as exc:
                         output = result(-1, stderr=str(exc))
-                    record("git pull scheduable", output)
+                    record("git pull schedulable", output)
         finally:
             lock.release()
 
