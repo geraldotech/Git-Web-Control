@@ -312,6 +312,14 @@ def create_app(config_path=None, *, settings=None):
     def status():
         return execute(lambda: run(COMMANDS["status"]))
 
+    @app.get("/api/git/changes")
+    def changes():
+        def action():
+            output = run(["status", "--porcelain", "--untracked-files=normal"])
+            output["hasChanges"] = bool(output["stdout"].strip()) if output["success"] else None
+            return output
+        return execute(action)
+
     @app.post("/api/git/fetch")
     def fetch():
         return execute(lambda: run(COMMANDS["fetch"]))

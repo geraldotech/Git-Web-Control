@@ -48,6 +48,20 @@ class GitAppTests(unittest.TestCase):
         self.assertTrue(switched.json["success"], switched.json)
         self.assertEqual(self.git("branch", "--show-current"), "feature/test")
 
+    def test_changes_detects_untracked_staged_modified_and_deleted_files(self):
+        self.assertFalse(self.client.get("/api/git/changes").json["hasChanges"])
+        file = self.repo / "change.txt"
+        file.write_text("new")
+        self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
+        self.git("add", ".")
+        self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
+        self.git("commit", "-m", "file")
+        self.assertFalse(self.client.get("/api/git/changes").json["hasChanges"])
+        file.write_text("modified")
+        self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
+        file.unlink()
+        self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
+
     def test_direct_commit_adds_commits_and_pushes(self):
         remote = self.root / "remote.git"
         self.git("init", "--bare", str(remote))

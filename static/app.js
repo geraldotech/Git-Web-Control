@@ -380,6 +380,19 @@ function submitSwitch() {
 document.querySelectorAll('[data-open-dialog]').forEach((button) => {
   button.addEventListener('click', () => {
     const dialog = document.getElementById(button.dataset.openDialog);
+    if (dialog.id === 'commit-dialog') {
+      perform('Verificar alterações', async () => {
+        const data = await api('git/changes');
+        if (!data.success) { showResult(data, 'Verificar alterações'); return; }
+        if (!data.hasChanges) {
+          showResult({ success: true, code: 0, stdout: 'Nenhuma alteração para commitar.' }, 'Commit direto');
+          return;
+        }
+        dialog.querySelector('.modal-feedback').hidden = true;
+        dialog.showModal();
+      }).then(() => { if (dialog.open) $('#commit-message').focus(); });
+      return;
+    }
     if (dialog.id === 'settings-dialog') fillSettings();
     dialog.querySelector('.modal-feedback').hidden = true;
     dialog.showModal();
