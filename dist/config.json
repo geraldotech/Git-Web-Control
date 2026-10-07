@@ -15,6 +15,13 @@
       ],
       "id": "default",
       "name": "webgitcontrol"
+    },
+    {
+      "id": "a24201baa3bdf792c0edd1021d2046fa",
+      "name": "paho-nsa",
+      "gitPath": "git",
+      "repoPath": "C:\\Dev\\Github\\paho-nsa",
+      "buttons": []
     }
   ]
 }
