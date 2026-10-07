@@ -80,19 +80,36 @@ class GitAppTests(unittest.TestCase):
         restarted = create_app(self.config)
         restarted.extensions["scheduled_pull"](datetime(2026, 10, 7, 15, 0))
         entries = json.loads((self.root / "logs" / f"{project_id}.json").read_text(encoding="utf-8"))
-        scheduled = [entry for entry in entries if entry["action"].startswith("Agendamento:")]
+        scheduled = [entry for entry in entries if entry["action"].startswith("git pull scheduable")]
         self.assertEqual(len(scheduled), 1)
         self.assertTrue(scheduled[0]["output"]["success"], scheduled)
         self.assertEqual(scheduled[0]["projectId"], project_id)
         page = self.client.get("/logs?projectId=" + project_id)
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Agendamento:", page.get_data(as_text=True))
+        self.assertIn("git pull scheduable", page.get_data(as_text=True))
         second, _ = self.add_project()
-        self.assertNotIn("Agendamento:", self.client.get("/logs?projectId=" + second["id"]).get_data(as_text=True))
+        self.assertNotIn("git pull scheduable", self.client.get("/logs?projectId=" + second["id"]).get_data(as_text=True))
         self.assertEqual(self.client.get("/logs?projectId=missing").status_code, 404)
         restarted.extensions["scheduled_pull"](datetime(2026, 10, 8, 10, 0))
         entries = json.loads((self.root / "logs" / f"{project_id}.json").read_text(encoding="utf-8"))
-        self.assertEqual(sum(entry["action"].startswith("Agendamento:") for entry in entries), 2)
+        self.assertEqual(sum(entry["action"].startswith("git pull scheduable") for entry in entries), 2)
+
+    def test_changing_schedule_time_allows_another_pull_today(self):
+        self.client.post("/api/settings", headers=self.headers, json={
+            "repoPath": str(self.repo), "autoPull": {"enabled": True, "time": "10:00"}})
+        self.app.extensions["scheduled_pull"](datetime(2026, 10, 7, 10, 0))
+        response = self.client.post("/api/settings", headers=self.headers, json={
+            "repoPath": str(self.repo), "autoPull": {"enabled": True, "time": "10:00"}})
+        self.assertEqual(response.json["settings"]["autoPull"]["lastRun"], "2026-10-07")
+        response = self.client.post("/api/settings", headers=self.headers, json={
+            "repoPath": str(self.repo), "autoPull": {"enabled": True, "time": "10:05"}})
+        self.assertNotIn("lastRun", response.json["settings"]["autoPull"])
+        self.app.extensions["scheduled_pull"](datetime(2026, 10, 7, 10, 4))
+        self.assertNotIn("lastRun", self.client.get("/api/settings").json["settings"]["autoPull"])
+        self.app.extensions["scheduled_pull"](datetime(2026, 10, 7, 10, 5))
+        self.assertEqual(self.client.get("/api/settings").json["settings"]["autoPull"]["lastRun"], "2026-10-07")
+        entries = json.loads((self.root / "logs" / "default.json").read_text(encoding="utf-8"))
+        self.assertEqual(sum(e["action"].startswith("git pull scheduable") for e in entries), 2)
 
     def test_schedule_rejects_invalid_time_and_can_be_disabled(self):
         for schedule in ({"enabled": True, "time": "25:00"}, {"enabled": "yes", "time": "10:00"}, None):

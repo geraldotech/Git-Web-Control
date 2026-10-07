@@ -77,7 +77,8 @@ def create_app(config_path=None, *, settings=None):
                 or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule["time"])):
             raise ValueError("Informe um horário válido para o pull diário (HH:MM).")
         cleaned = {"enabled": schedule["enabled"], "time": schedule["time"]}
-        if fallback and fallback.get("lastRun"):
+        if (fallback and fallback.get("lastRun") and fallback.get("enabled")
+                and cleaned["enabled"] and fallback.get("time") == cleaned["time"]):
             cleaned["lastRun"] = fallback["lastRun"]
         return cleaned
     def resolve_settings(values):
@@ -292,7 +293,7 @@ def create_app(config_path=None, *, settings=None):
                         output = validate_repo() or run(["pull"])
                     except (OSError, ValueError, TypeError) as exc:
                         output = result(-1, stderr=str(exc))
-                    record(f"Agendamento: git pull diário às {schedule.get('time')}", output)
+                    record("git pull scheduable", output)
         finally:
             lock.release()
 
