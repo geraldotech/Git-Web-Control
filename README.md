@@ -1,6 +1,6 @@
 # Git Web Controlx
 
-Aplicação Flask para controlar um repositório Git da máquina pelo navegador: status, fetch, pull, switch, console Git e botões personalizados.
+Aplicação Flask para controlar múltiplos repositórios Git da máquina pelo navegador: status, fetch, pull, switch, console Git e botões personalizados por projeto.
 
 ## Executar no Windows
 
@@ -11,16 +11,20 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Configure `gitPath` e `repoPath` diretamente no painel e clique em **Salvar configuração**. O servidor valida o repositório, salva no `config.json` e aplica a mudança sem reiniciar. Também é possível editar o arquivo manualmente:
+Use **Adicionar projeto** para cadastrar nome, `gitPath` e `repoPath`. Selecione um projeto no painel e use **Configuração** para alterar seu nome ou caminhos. O servidor valida o repositório, salva no `config.json` e aplica a mudança sem reiniciar. Cada projeto possui seus próprios botões personalizados. Também é possível editar o arquivo manualmente:
 
 ```json
 {
-  "gitPath": "git",
-  "repoPath": "D:\\APP"
+  "projects": [
+    {"id": "app", "name": "Aplicação", "gitPath": "git", "repoPath": "D:\\APP", "buttons": []},
+    {"id": "site", "name": "Site", "gitPath": "git", "repoPath": "D:\\SITE", "buttons": []}
+  ]
 }
 ```
 
 Também pode usar `C:\\Program Files\\Git\\cmd\\git.exe` em `gitPath`. Caminhos relativos em `repoPath` são resolvidos a partir da pasta do arquivo de configuração. Reinicie o servidor apenas quando editar o arquivo manualmente. Se o arquivo estiver ausente ou inválido, o painel continua acessível para corrigir os caminhos. Uma configuração rejeitada não substitui a configuração ativa.
+
+O formato antigo com `gitPath`, `repoPath` e `buttons` na raiz continua aceito como **Meu projeto** e é migrado ao salvar, preservando os botões. Os IDs dos projetos devem ser únicos e estáveis. A seleção fica na URL (`?projectId=...`), permitindo recarregar ou abrir abas com projetos diferentes. Comandos, branches, contagem e botões sempre usam o projeto selecionado.
 
 ```powershell
 .\.venv\Scripts\python.exe app.py
@@ -34,7 +38,7 @@ Credenciais e remotos devem estar configurados na máquina para o usuário que e
 
 ## Contagem de commits
 
-Ao abrir a página e após cada comando, o painel executa `git rev-list --count HEAD..@{u}`. O número indica commits presentes no upstream e ausentes no HEAD local. Não faz fetch automaticamente: clique em **Fetch** para atualizar as referências remotas. Se a branch não tiver upstream, HEAD estiver destacado ou houver outro erro, aparece **Indisponível**, com a mensagem do Git, em vez de um zero incorreto.
+Ao abrir a página e após cada comando, o painel executa `git rev-list --count HEAD..@{u}`. O número indica commits presentes no upstream e ausentes no HEAD local. O painel faz fetch ao abrir, trocar de projeto e voltar para a aba (com intervalo mínimo de 30 segundos); **Fetch** força uma nova busca. Durante a operação, os controles ficam desativados para evitar trocar de projeto antes de receber o resultado. Se a branch não tiver upstream, HEAD estiver destacado ou houver outro erro, aparece **Indisponível**, com a mensagem do Git, em vez de um zero incorreto.
 
 ## Console e botões personalizados
 
@@ -42,10 +46,17 @@ Digite um comando como `git log --oneline -10` ou `git rev-list --count HEAD..@{
 
 Os comandos mantêm os efeitos normais do Git, incluindo alterações no repositório, configuração e hooks existentes; o console não é um ambiente isolado. Editores e entrada interativa estão desativados, portanto informe mensagens com `-m` em comandos como commit.
 
-Em **Botões personalizados**, informe um nome e um comando Git e clique em **Adicionar botão**. É possível executar, editar e excluir cada atalho. Até 30 botões são persistidos na propriedade `buttons` do `config.json`, compartilhados entre acessos ao painel e mantidos após reiniciar. Cadastrar um botão apenas salva o comando; a execução acontece ao clicar nele. Botões e console usam a mesma validação.
+Em **Gerenciar botões**, informe um nome e um comando Git e clique em **Adicionar botão**. É possível executar, editar e excluir cada atalho. Até 30 botões por projeto são persistidos na propriedade `buttons` de cada projeto no `config.json`, compartilhados entre acessos ao mesmo projeto e mantidos após reiniciar. Cadastrar um botão apenas salva o comando; a execução acontece ao clicar nele. Botões e console usam a mesma validação.
 
 ## API
 
+Para remover o projeto selecionado, abra **Configuração** e clique em **Excluir projeto**. O painel pergunta **Tem certeza?** e exige o resultado correto de uma soma antes de **Confirmar exclusão**. **Cancelar** mantém o projeto. Isso remove apenas o cadastro e seus botões; os arquivos e o histórico Git permanecem no disco. Após excluir, o painel seleciona outro projeto disponível. Também é possível excluir o último projeto e cadastrar um novo na tela vazia.
+
+Endpoints de Git, configuração e botões recebem `?projectId=<id>`. Sem esse parâmetro, usam o primeiro projeto para compatibilidade; IDs desconhecidos retornam 404.
+
+- `GET /api/projects` — lista IDs e nomes
+- `POST /api/projects/delete?projectId=<id>` — exclui o cadastro e seus botões; exige um ID explícito e o token CSRF
+- `POST /api/projects` com JSON `{"name":"Site","gitPath":"git","repoPath":"D:\\SITE"}` — adiciona um projeto com botões vazios
 - `GET /api/git/status`
 - `POST /api/git/fetch`
 - `POST /api/git/pull`
@@ -54,7 +65,7 @@ Em **Botões personalizados**, informe um nome e um comando Git e clique em **Ad
 - `GET /api/git/behind` — inclui `count`; retorna `null` quando a contagem não está disponível
 - `POST /api/git/console` com JSON `{"command":"git log --oneline -10"}`
 - `GET /api/settings` — configuração atual e caminho resolvido do repositório
-- `POST /api/settings` com JSON `{"gitPath":"git","repoPath":"D:\\SGA"}`
+- `POST /api/settings` com JSON `{"name":"Aplicação","gitPath":"git","repoPath":"D:\\SGA"}` — altera o projeto selecionado
 - `POST /api/buttons` com JSON `{"buttons":[{"label":"Log","command":"git log --oneline -10"}]}` — substitui a lista salva
 
 Respostas incluem `success`, `code`, `stdout` e `stderr`. Branches também retorna `branches` e `currentBranch`. As requisições POST exigem o cabeçalho `X-CSRF-Token` com o valor da meta tag `csrf-token` em `/`; a interface envia automaticamente. Isso protege contra chamadas de outras páginas, sem adicionar login. Nomes de branches são validados pelo Git.

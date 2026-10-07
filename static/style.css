@@ -62,6 +62,11 @@ body:has(dialog[open]) { overflow: hidden; }
 .modal-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .modal-feedback { font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: 18px 0 0; }
 #settings-form input, #button-form input { margin-bottom: 18px; }
+.delete-project-area { margin-top: 24px; padding-top: 20px; border-top: 1px solid #43536a; }
+.danger { background: #592c30; border-color: #bd6565; color: #ffe2de; }
+.danger:hover { background: #76383d; }
+#delete-project-form label { margin-top: 18px; }
+#delete-project-form .actions { margin-top: 16px; }
 .custom-buttons { display: grid; gap: 12px; margin-bottom: 22px; }
 .custom-button-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #2b394c; padding-bottom: 14px; }
 .custom-button-row code { flex: 1; min-width: 120px; overflow-wrap: anywhere; font-size: .8rem; color: #a4b2c5; }

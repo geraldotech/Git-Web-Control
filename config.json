@@ -1,14 +1,20 @@
 {
-  "gitPath": "git",
-  "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
-  "buttons": [
+  "projects": [
     {
-      "label": "Tag",
-      "command": "git tag"
-    },
-    {
-      "label": "Últimos",
-      "command": "git log -10 --oneline"
+      "gitPath": "git",
+      "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
+      "buttons": [
+        {
+          "label": "Tag",
+          "command": "git tag"
+        },
+        {
+          "label": "Últimos",
+          "command": "git log -10 --oneline"
+        }
+      ],
+      "id": "default",
+      "name": "webgitcontrol"
     }
   ]
 }

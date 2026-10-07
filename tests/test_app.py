@@ -154,7 +154,7 @@ class GitAppTests(unittest.TestCase):
         self.assertTrue(response.json["success"], response.json)
         self.assertEqual(self.client.get("/api/git/branches").json["currentBranch"], "other")
         saved = json.loads(self.config.read_text(encoding="utf-8"))
-        self.assertEqual(saved["repoPath"], str(other))
+        self.assertEqual(saved["projects"][0]["repoPath"], str(other))
         restarted = create_app(self.config).test_client()
         self.assertEqual(restarted.get("/api/git/branches").json["currentBranch"], "other")
         self.assertIn(str(other), restarted.get("/").get_data(as_text=True))
@@ -209,11 +209,153 @@ class GitAppTests(unittest.TestCase):
         self.assertFalse(self.client.post("/api/buttons", headers=self.headers, json={"buttons": invalid}).json["success"])
         self.assertEqual(self.client.get("/api/settings").json["settings"]["buttons"], buttons)
         self.assertTrue(self.client.post("/api/buttons", headers=self.headers, json={"buttons": []}).json["success"])
-        self.assertEqual(json.loads(self.config.read_text(encoding="utf-8"))["buttons"], [])
+        self.assertEqual(json.loads(self.config.read_text(encoding="utf-8"))["projects"][0]["buttons"], [])
+
+    def add_project(self, name="Segundo projeto"):
+        other = self.root / "second repo"
+        other.mkdir(exist_ok=True)
+        self.git("init", "-b", "second", cwd=other)
+        response = self.client.post("/api/projects", headers=self.headers, json={
+            "name": name, "gitPath": shutil.which("git"), "repoPath": str(other)})
+        self.assertTrue(response.json["success"], response.json)
+        return response.json["settings"], other
+
+    def test_projects_isolate_commands_settings_buttons_and_reload(self):
+        first = self.client.get("/api/settings").json["settings"]
+        buttons = [{"label": "Status", "command": "git status"}]
+        self.client.post("/api/buttons", headers=self.headers, json={"buttons": buttons})
+        second, other = self.add_project()
+        query = "?projectId=" + second["id"]
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertEqual(second["buttons"], [])
+        self.assertEqual(self.client.get("/api/git/branches" + query).json["currentBranch"], "second")
+        self.assertEqual(self.client.get("/api/git/branches").json["currentBranch"], "main")
+        response = self.client.post("/api/git/console" + query, headers=self.headers,
+                                    json={"command": "git config project.marker second"})
+        self.assertTrue(response.json["success"], response.json)
+        self.assertEqual(self.git("config", "project.marker", cwd=other), "second")
+        self.assertNotIn("project.marker", self.git("config", "--local", "--list"))
+        edited = {"name": "Renomeado", "gitPath": "git", "repoPath": str(other)}
+        self.assertTrue(self.client.post("/api/settings" + query, headers=self.headers, json=edited).json["success"])
+        shortcuts = [{"label": "Branches", "command": "git branch"}]
+        self.assertTrue(self.client.post("/api/buttons" + query, headers=self.headers,
+                                        json={"buttons": shortcuts}).json["success"])
+        restarted = create_app(self.config).test_client()
+        self.assertEqual(len(restarted.get("/api/projects").json["projects"]), 2)
+        self.assertEqual(restarted.get("/api/settings").json["settings"]["buttons"], buttons)
+        self.assertEqual(restarted.get("/api/settings").json["settings"]["repoPath"], str(self.repo))
+        saved = restarted.get("/api/settings" + query).json["settings"]
+        self.assertEqual(saved["name"], "Renomeado")
+        self.assertEqual(saved["buttons"], shortcuts)
+        self.assertIn("Renomeado", restarted.get("/" + query).get_data(as_text=True))
+
+    def test_project_creation_validation_and_failed_write(self):
+        valid = {"name": "New", "gitPath": "git", "repoPath": str(self.repo)}
+        for body in ([], {}, {**valid, "name": " "}, {**valid, "name": "x" * 81},
+                     {**valid, "repoPath": str(self.root)}, {**valid, "gitPath": "missing-git"}):
+            response = self.client.post("/api/projects", headers=self.headers, json=body)
+            self.assertEqual(response.status_code, 400, response.json)
+        with patch("app.os.replace", side_effect=PermissionError("read-only")):
+            self.assertFalse(self.client.post("/api/projects", headers=self.headers, json=valid).json["success"])
+        self.assertEqual(len(self.client.get("/api/projects").json["projects"]), 1)
+        self.assertFalse(list(self.root.glob("*.tmp")))
+
+    def test_unknown_project_never_falls_back_to_another_repository(self):
+        for endpoint in ("settings", "git/status", "git/branches", "git/behind"):
+            self.assertEqual(self.client.get("/api/" + endpoint + "?projectId=missing").status_code, 404)
+        for endpoint in ("settings", "buttons", "git/console", "git/fetch", "git/pull", "git/switch"):
+            self.assertEqual(self.client.post("/api/" + endpoint + "?projectId=missing",
+                                             headers=self.headers, json={"branch": "main"}).status_code, 404)
+
+    def test_legacy_configuration_migrates_without_losing_buttons(self):
+        legacy = {"gitPath": "git", "repoPath": "repo",
+                  "buttons": [{"label": "Log", "command": "git log -1"}]}
+        self.config.write_text(json.dumps(legacy), encoding="utf-8")
+        client = create_app(self.config).test_client()
+        page = client.get("/").get_data(as_text=True)
+        headers = {"X-CSRF-Token": re.search(r'name="csrf-token" content="([^"]+)"', page)[1]}
+        self.assertTrue(client.get("/api/git/status").json["success"])
+        self.assertEqual(json.loads(self.config.read_text(encoding="utf-8")), legacy)
+        self.assertTrue(client.post("/api/settings", headers=headers, json={**legacy, "name": "Existing"}).json["success"])
+        saved = json.loads(self.config.read_text(encoding="utf-8"))["projects"][0]
+        self.assertEqual(saved["buttons"], legacy["buttons"])
+        self.assertEqual(saved["name"], "Existing")
+
+    def test_invalid_project_does_not_block_healthy_project(self):
+        second, _ = self.add_project()
+        saved = json.loads(self.config.read_text(encoding="utf-8"))
+        saved["projects"][0]["gitPath"] = "missing-git"
+        client = create_app(self.config, settings=saved).test_client()
+        self.assertEqual(client.get("/api/git/status").status_code, 503)
+        self.assertTrue(client.get("/api/git/status?projectId=" + second["id"]).json["success"])
 
     def test_new_mutations_require_token(self):
-        for endpoint in ("settings", "buttons", "git/console"):
+        for endpoint in ("settings", "buttons", "git/console", "projects", "projects/delete"):
             self.assertEqual(self.client.post("/api/" + endpoint, json={}).status_code, 403)
+
+    def test_delete_project_preserves_repositories_and_other_projects(self):
+        second, other = self.add_project()
+        query = "?projectId=" + second["id"]
+        marker = other / "keep.txt"
+        marker.write_text("keep my files", encoding="utf-8")
+        self.client.post("/api/buttons" + query, headers=self.headers,
+                         json={"buttons": [{"label": "Status", "command": "git status"}]})
+        first = self.client.get("/api/settings").json["settings"]
+        response = self.client.post("/api/projects/delete" + query, headers=self.headers, json={})
+        self.assertTrue(response.json["success"], response.json)
+        self.assertEqual(marker.read_text(encoding="utf-8"), "keep my files")
+        self.assertEqual(self.git("branch", "--show-current", cwd=other), "second")
+        self.assertEqual(self.client.get("/api/settings").json["settings"], first)
+        restarted = create_app(self.config).test_client()
+        self.assertEqual(restarted.get("/api/projects").json["projects"],
+                         [{"id": first["id"], "name": first["name"]}])
+        self.assertEqual(restarted.get("/api/git/status" + query).status_code, 404)
+        self.assertEqual(restarted.get("/" + query).status_code, 200)
+
+    def test_delete_last_project_persists_empty_state_and_can_add_again(self):
+        project = self.client.get("/api/settings").json["settings"]
+        response = self.client.post("/api/projects/delete?projectId=" + project["id"],
+                                    headers=self.headers, json={})
+        self.assertTrue(response.json["success"], response.json)
+        self.assertEqual(self.client.get("/api/projects").json["projects"], [])
+        self.assertEqual(json.loads(self.config.read_text(encoding="utf-8")), {"projects": []})
+        self.assertEqual(self.git("branch", "--show-current"), "main")
+        restarted = create_app(self.config).test_client()
+        self.assertEqual(restarted.get("/api/projects").json["projects"], [])
+        page = restarted.get("/")
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(restarted.get("/api/git/status").status_code, 404)
+        headers = {"X-CSRF-Token": re.search(r'name="csrf-token" content="([^"]+)"', page.get_data(as_text=True))[1]}
+        added = restarted.post("/api/projects", headers=headers, json={
+            "name": "Back", "gitPath": "git", "repoPath": str(self.repo)})
+        self.assertTrue(added.json["success"], added.json)
+        self.assertEqual(len(restarted.get("/api/projects").json["projects"]), 1)
+        self.assertTrue(restarted.get("/api/git/status").json["success"])
+
+    def test_delete_requires_explicit_known_id_and_preserves_state_on_write_failure(self):
+        second, _ = self.add_project()
+        saved = self.config.read_text(encoding="utf-8")
+        for query, status in (("", 400), ("?projectId=", 400), ("?projectId=missing", 404)):
+            response = self.client.post("/api/projects/delete" + query, headers=self.headers, json={})
+            self.assertEqual(response.status_code, status)
+        with patch("app.os.replace", side_effect=PermissionError("read-only")):
+            response = self.client.post("/api/projects/delete?projectId=" + second["id"],
+                                        headers=self.headers, json={})
+            self.assertFalse(response.json["success"])
+        self.assertEqual(self.config.read_text(encoding="utf-8"), saved)
+        self.assertEqual(len(self.client.get("/api/projects").json["projects"]), 2)
+        self.assertFalse(list(self.root.glob("*.tmp")))
+
+    def test_delete_invalid_repository_does_not_execute_git(self):
+        client = create_app(self.config, settings={"projects": [
+            {"id": "broken", "name": "Broken", "gitPath": "missing-git", "repoPath": "missing"}
+        ]}).test_client()
+        page = client.get("/").get_data(as_text=True)
+        headers = {"X-CSRF-Token": re.search(r'name="csrf-token" content="([^"]+)"', page)[1]}
+        with patch("app.subprocess.run") as run:
+            response = client.post("/api/projects/delete?projectId=broken", headers=headers, json={})
+            self.assertTrue(response.json["success"], response.json)
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

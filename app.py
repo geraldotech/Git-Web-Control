@@ -10,7 +10,7 @@ import subprocess
 import threading
 import tempfile
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, g, jsonify, render_template, request
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -50,16 +50,47 @@ def create_app(config_path=None, *, settings=None):
     try:
         if settings is None:
             settings = json.loads(path.read_text(encoding="utf-8-sig"))
-        repo_path, git_path = resolve_settings(settings)
     except (OSError, ValueError, TypeError) as exc:
         config_error = f"Erro de configuração: {exc}"
-        repo_path = "Não configurado"
-        git_path = None
     settings = dict(settings) if isinstance(settings, dict) else {}
-    settings.setdefault("gitPath", "git")
-    settings.setdefault("repoPath", "")
-    if not isinstance(settings.get("buttons"), list):
-        settings["buttons"] = []
+    projects = settings.get("projects")
+    if not isinstance(projects, list):
+        projects = [{**settings, "id": "default", "name": settings.get("name") or "Meu projeto"}]
+    projects = [dict(project) for project in projects if isinstance(project, dict)]
+    used_ids = set()
+    for project in projects:
+        if not isinstance(project.get("id"), str) or not project["id"] or project["id"] in used_ids:
+            project["id"] = secrets.token_hex(16)
+        used_ids.add(project["id"])
+        project.setdefault("name", "Meu projeto")
+        project.setdefault("gitPath", "git")
+        project.setdefault("repoPath", "")
+        if not isinstance(project.get("buttons"), list):
+            project["buttons"] = []
+
+    def select_project():
+        project_id = request.args.get("projectId", projects[0]["id"] if projects else None)
+        g.project = next((project for project in projects if project["id"] == project_id), None)
+        if g.project is None:
+            return jsonify(result(-1, stderr="Projeto não encontrado.")), 404
+        g.repo_path, g.git_path, g.config_error = "Não configurado", None, config_error
+        try:
+            g.repo_path, g.git_path = resolve_settings(g.project)
+            g.config_error = None
+        except (OSError, ValueError, TypeError) as exc:
+            g.config_error = f"Erro de configuração: {exc}"
+
+    def project_name(body, fallback=None):
+        name = body.get("name", fallback)
+        if not isinstance(name, str) or not name.strip() or len(name) > 80:
+            raise ValueError("Informe um nome de projeto de até 80 caracteres.")
+        return name.strip()
+
+    def persist_project(values, *, new=False):
+        updated = [*projects, values] if new else [
+            values if project["id"] == values["id"] else project for project in projects]
+        persist({"projects": updated})
+        projects[:] = updated
 
     def run(args, *, executable=None, directory=None, timeout=120):
         # Não herdar variáveis capazes de redirecionar o repositório configurado.
@@ -69,8 +100,8 @@ def create_app(config_path=None, *, settings=None):
                    GIT_EDITOR="false", GIT_SEQUENCE_EDITOR="false")
         try:
             process = subprocess.run(
-                [executable or git_path, "--no-pager", *args],
-                cwd=directory or repo_path, capture_output=True,
+                [executable or g.git_path, "--no-pager", *args],
+                cwd=directory or g.repo_path, capture_output=True,
                 text=True, encoding="utf-8", errors="replace", shell=False,
                 timeout=timeout, env=env, stdin=subprocess.DEVNULL,
             )
@@ -81,8 +112,8 @@ def create_app(config_path=None, *, settings=None):
             return result(-1, stderr=f"Não foi possível executar Git: {exc}")
 
     def validate_repo():
-        if config_error:
-            return result(-1, stderr=config_error)
+        if g.config_error:
+            return result(-1, stderr=g.config_error)
         check = run(["rev-parse", "--is-inside-work-tree"])
         if not check["success"] or check["stdout"].strip() != "true":
             return result(-1, stderr="repoPath deve apontar para um repositório Git com árvore de trabalho.\n" + check["stderr"])
@@ -107,13 +138,23 @@ def create_app(config_path=None, *, settings=None):
 
     @app.get("/")
     def index():
-        return render_template("index.html", repo_path=str(repo_path), csrf_token=token,
-                               settings=settings)
+        with lock:
+            error = select_project()
+            if error:
+                # Keep the panel available after the last project is removed or a saved URL expires.
+                return render_template("index.html", repo_path="Nenhum projeto selecionado",
+                                       csrf_token=token, settings={})
+            return render_template("index.html", repo_path=str(g.repo_path), csrf_token=token,
+                                   settings=g.project)
 
-    def execute(action, *, require_repo=True):
+    def execute(action, *, require_repo=True, require_project=True):
         if not lock.acquire(blocking=False):
             return jsonify(result(-1, stderr="Há outra operação Git em andamento.")), 409
         try:
+            if require_project:
+                selection_error = select_project()
+                if selection_error:
+                    return selection_error
             error = validate_repo() if require_repo else None
             if error:
                 return jsonify(error), 503
@@ -138,25 +179,65 @@ def create_app(config_path=None, *, settings=None):
     @app.get("/api/settings")
     def get_settings():
         with lock:
-            return jsonify(dict(result(), settings=settings, resolvedRepoPath=str(repo_path)))
+            error = select_project()
+            if error:
+                return error
+            return jsonify(dict(result(), settings=g.project, resolvedRepoPath=str(g.repo_path)))
+
+    @app.get("/api/projects")
+    def get_projects():
+        with lock:
+            return jsonify(dict(result(), projects=[{"id": p["id"], "name": p["name"]} for p in projects]))
+
+    @app.post("/api/projects")
+    def add_project():
+        def action():
+            body = request.get_json(silent=True)
+            try:
+                new_repo, new_git = resolve_settings(body)
+                name = project_name(body)
+                check = run(["rev-parse", "--is-inside-work-tree"], executable=new_git, directory=new_repo)
+                if not check["success"] or check["stdout"].strip() != "true":
+                    return result(-1, stderr="repoPath não é um repositório Git com árvore de trabalho.\n" + check["stderr"])
+                values = {"id": secrets.token_hex(16), "name": name,
+                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"], "buttons": []}
+                persist_project(values, new=True)
+            except (OSError, ValueError, TypeError) as exc:
+                return result(-1, stderr=f"Não foi possível adicionar: {exc}")
+            return dict(result(stdout="Projeto adicionado."), settings=values, resolvedRepoPath=str(new_repo))
+        return execute(action, require_repo=False, require_project=False)
+
+    @app.post("/api/projects/delete")
+    def delete_project():
+        if not request.args.get("projectId"):
+            return jsonify(result(-1, stderr="Informe o projeto a excluir.")), 400
+
+        def action():
+            updated = [project for project in projects if project["id"] != g.project["id"]]
+            try:
+                persist({"projects": updated})
+            except OSError as exc:
+                return result(-1, stderr=f"Não foi possível excluir: {exc}")
+            projects[:] = updated
+            return result(stdout="Projeto excluído do painel. Os arquivos do repositório foram mantidos.")
+        return execute(action, require_repo=False)
 
     @app.post("/api/settings")
     def save_settings():
         def action():
-            nonlocal settings, repo_path, git_path, config_error
             body = request.get_json(silent=True)
             try:
                 new_repo, new_git = resolve_settings(body)
                 check = run(["rev-parse", "--is-inside-work-tree"], executable=new_git, directory=new_repo)
                 if not check["success"] or check["stdout"].strip() != "true":
                     return result(-1, stderr="repoPath não é um repositório Git com árvore de trabalho.\n" + check["stderr"])
-                values = {**settings, "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"]}
-                persist(values)
+                values = {**g.project, "name": project_name(body, g.project["name"]),
+                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"]}
+                persist_project(values)
             except (OSError, ValueError, TypeError) as exc:
                 return result(-1, stderr=f"Não foi possível salvar: {exc}")
-            settings, repo_path, git_path, config_error = values, new_repo, new_git, None
-            return dict(result(stdout="Configuração salva e aplicada."), settings=settings,
-                        resolvedRepoPath=str(repo_path))
+            return dict(result(stdout="Configuração salva e aplicada."), settings=values,
+                        resolvedRepoPath=str(new_repo))
         return execute(action, require_repo=False)
 
     @app.get("/api/git/behind")
@@ -203,7 +284,6 @@ def create_app(config_path=None, *, settings=None):
     @app.post("/api/buttons")
     def save_buttons():
         def action():
-            nonlocal settings
             body = request.get_json(silent=True)
             buttons = body.get("buttons") if isinstance(body, dict) else None
             if not isinstance(buttons, list) or len(buttons) > 30:
@@ -216,11 +296,10 @@ def create_app(config_path=None, *, settings=None):
                         raise ValueError("Cada botão precisa de um nome de até 60 caracteres.")
                     parse_command(button.get("command"))
                     cleaned.append({"label": button["label"].strip(), "command": button["command"].strip()})
-                values = {**settings, "buttons": cleaned}
-                persist(values)
+                values = {**g.project, "buttons": cleaned}
+                persist_project(values)
             except (ValueError, OSError) as exc:
                 return result(-1, stderr=f"Não foi possível salvar os botões: {exc}")
-            settings = values
             return dict(result(stdout="Botões salvos."), buttons=cleaned)
         return execute(action)
 

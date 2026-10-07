@@ -12,12 +12,21 @@
   <main>
     <header>
       <div><h1>Git Web Control</h1></div>
-      <div class="actions">
+      <div class="actions" data-project-only>
         <button type="button" class="secondary" data-open-dialog="settings-dialog" aria-haspopup="dialog">Configuração</button>
         <button type="button" class="secondary" data-open-dialog="buttons-dialog" aria-haspopup="dialog">Gerenciar botões</button>
       </div>
     </header>
-    <section aria-label="Repositório">
+    <section aria-label="Projetos">
+      <label for="project-select">Projeto selecionado</label>
+      <div class="switch-row">
+        <select id="project-select" aria-label="Projeto selecionado"></select>
+        <button type="button" id="add-project" aria-haspopup="dialog">Adicionar projeto</button>
+      </div>
+      <p class="hint">Configuração, botões e comandos pertencem ao projeto selecionado.</p>
+      <p class="hint" id="no-projects" hidden>Nenhum projeto cadastrado. Use Adicionar projeto para começar.</p>
+    </section>
+    <section aria-label="Repositório" data-project-only>
       <dl class="stats">
         <div class="stat">
           <dt class="label">Projeto</dt>
@@ -56,15 +65,31 @@
     <dialog id="settings-dialog" aria-labelledby="settings-title">
       <div class="modal-heading"><h2 id="settings-title">Configuração</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar configuração">Fechar</button></div>
       <form id="settings-form">
+        <label for="project-name">Nome do projeto</label>
+        <input id="project-name" required maxlength="80" value="{{ settings.get('name', '') }}" placeholder="Meu projeto">
         <label for="git-path">gitPath — executável do Git</label>
         <input id="git-path" required value="{{ settings.get('gitPath', 'git') }}" placeholder="git" spellcheck="false">
         <label for="repo-input">repoPath — pasta do repositório</label>
-        <input id="repo-input" required value="{{ settings.get('repoPath', '') }}" placeholder="D:\SGA" spellcheck="false">
-        <button type="submit">Salvar configuração</button>
+        <input id="repo-input" required value="{{ settings.get('repoPath', '') }}" placeholder="D:\Dev" spellcheck="false">
+        <button type="submit" id="save-settings">Salvar configuração</button>
       </form>
+      <div id="delete-project-area" class="delete-project-area" hidden>
+        <button type="button" id="delete-project" class="danger" aria-expanded="false" aria-controls="delete-project-form">Excluir projeto</button>
+        <form id="delete-project-form" hidden>
+          <p id="delete-project-question"></p>
+          <p class="hint" id="delete-project-description">A configuração e os botões serão removidos do painel. Os arquivos do repositório serão mantidos.</p>
+          <label for="delete-project-answer" id="delete-project-sum"></label>
+          <input id="delete-project-answer" required inputmode="numeric" pattern="[0-9]+" autocomplete="off" aria-describedby="delete-project-description delete-project-error">
+          <p id="delete-project-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit" class="danger">Confirmar exclusão</button>
+            <button type="button" id="cancel-delete-project" class="secondary">Cancelar</button>
+          </div>
+        </form>
+      </div>
       <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
     </dialog>
-    <section class="console-panel" aria-label="Console Git e resultado">
+    <section class="console-panel" aria-label="Console Git e resultado" data-project-only>
       <div class="result-heading">
         <h2>Console Git</h2>
         <span id="operation-state" role="status" aria-live="polite">Carregando…</span>
