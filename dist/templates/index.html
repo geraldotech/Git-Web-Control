@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Git Web Control</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="7" r="3"/><circle cx="10" cy="25" r="3"/><circle cx="23" cy="8" r="3"/><path d="M10 10v12M23 11v3a7 7 0 0 1-7 7h-6"/></svg></div>
+        <div><p class="eyebrow">SEU WORKSPACE GIT</p><h1>Git Web Control</h1><p class="subtitle">Seus projetos. Tudo sob controle.</p></div>
+      </div>
+      <div class="actions header-actions" data-project-only>
+        <button type="button" class="secondary" data-open-dialog="settings-dialog" aria-haspopup="dialog">Configuração</button>
+        <button type="button" class="secondary" data-open-dialog="buttons-dialog" aria-haspopup="dialog">Gerenciar botões</button>
+      </div>
+    </header>
+    <section class="project-panel" aria-label="Projetos">
+      <div class="section-heading"><div><h2>Projetos</h2><p class="hint">Escolha o repositório que você quer gerenciar.</p></div><span class="section-kicker">WORKSPACE</span></div>
+      <label class="sr-only" for="project-select">Projeto selecionado</label>
+      <div class="switch-row">
+        <select id="project-select" aria-label="Projeto selecionado"></select>
+        <button type="button" id="add-project" class="primary" aria-haspopup="dialog"><span aria-hidden="true">＋</span> Adicionar projeto</button>
+      </div>
+      <p class="hint">Configuração, botões e comandos pertencem ao projeto selecionado.</p>
+      <p class="hint" id="no-projects" hidden>Nenhum projeto cadastrado. Use Adicionar projeto para começar.</p>
+    </section>
+    <section aria-label="Repositório" data-project-only>
+      <div class="section-heading"><h2>Visão geral</h2><span class="section-kicker">REPOSITÓRIO</span></div>
+      <dl class="stats">
+        <div class="stat">
+          <dt class="label">Pasta do projeto</dt>
+          <dd class="path" id="repo-path">{{ repo_path }}</dd>
+        </div>
+        <div class="stat">
+          <dt class="label">Branch atual</dt>
+          <dd class="branch" id="current-branch">Carregando…</dd>
+        </div>
+        <div class="stat">
+          <dt class="label">Pendentes do upstream</dt>
+          <dd class="count" id="behind-count" role="status">Carregando…</dd>
+        </div>
+      </dl>
+      <div class="actions">
+        <button type="button" id="open-switch" aria-haspopup="dialog"><span aria-hidden="true">⇄</span> Switch</button>
+        <button data-command="status">Status</button>
+        <button data-command="fetch">Fetch</button>
+        <button data-command="pull" class="accent">Pull</button>
+      </div>
+      <div id="custom-buttons" class="actions shortcuts" aria-label="Atalhos personalizados" hidden></div>
+      <p class="hint">As referências remotas são atualizadas automaticamente. Use Fetch para buscar agora ou Switch para trocar de branch.</p>
+      <p class="hint" id="auto-fetch-state" role="status" aria-live="polite" hidden></p>
+      <details id="behind-details" hidden><summary>Motivo da contagem indisponível</summary><pre id="behind-error"></pre></details>
+    </section>
+    <dialog id="switch-dialog" aria-labelledby="switch-title">
+      <div class="modal-heading"><h2 id="switch-title">Trocar branch</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar troca de branch">Fechar</button></div>
+      <ul id="branch-options" class="branch-list" aria-label="Branches"></ul>
+      <form id="switch-form">
+        <label for="branch-name">Nome da branch</label>
+        <div class="switch-row"><input id="branch-name" maxlength="255" placeholder="Ex.: main" autocomplete="off" spellcheck="false" enterkeyhint="go"><button type="submit" class="primary">Switch</button></div>
+        <p class="hint">Selecione uma branch na lista ou digite o nome — inclusive de uma branch remota disponível após Fetch.</p>
+      </form>
+      <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
+    </dialog>
+    <dialog id="settings-dialog" aria-labelledby="settings-title">
+      <div class="modal-heading"><h2 id="settings-title">Configuração</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar configuração">Fechar</button></div>
+      <form id="settings-form">
+        <div class="setting-row">
+          <div><label for="project-name">Nome do projeto</label><p class="hint" id="project-name-hint">Como ele aparece no seu workspace.</p></div>
+          <input id="project-name" required maxlength="80" value="{{ settings.get('name', '') }}" placeholder="Meu projeto" aria-describedby="project-name-hint">
+        </div>
+        <div class="setting-row">
+          <div><label for="git-path">gitPath</label><p class="hint" id="git-path-hint">Executável do Git na sua máquina.</p></div>
+          <input id="git-path" required value="{{ settings.get('gitPath', 'git') }}" placeholder="git" spellcheck="false" aria-describedby="git-path-hint">
+        </div>
+        <div class="setting-row">
+          <div><label for="repo-input">repoPath</label><p class="hint" id="repo-input-hint">Pasta local do repositório.</p></div>
+          <input id="repo-input" required value="{{ settings.get('repoPath', '') }}" placeholder="D:\Dev" spellcheck="false" aria-describedby="repo-input-hint">
+        </div>
+        <div class="form-footer"><button type="submit" id="save-settings" class="primary">Salvar configuração</button></div>
+      </form>
+      <div id="delete-project-area" class="delete-project-area" hidden>
+        <div class="delete-heading"><div><h2>Remover do workspace</h2><p class="hint">Os arquivos e o histórico Git são mantidos.</p></div><button type="button" id="delete-project" class="danger" aria-expanded="false" aria-controls="delete-project-form">Excluir projeto</button></div>
+        <form id="delete-project-form" hidden>
+          <p id="delete-project-question"></p>
+          <p class="hint" id="delete-project-description">A configuração e os botões serão removidos do painel. Os arquivos do repositório serão mantidos.</p>
+          <label for="delete-project-answer" id="delete-project-sum"></label>
+          <input id="delete-project-answer" required inputmode="numeric" pattern="[0-9]+" autocomplete="off" aria-describedby="delete-project-description delete-project-error">
+          <p id="delete-project-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit" class="danger">Confirmar exclusão</button>
+            <button type="button" id="cancel-delete-project" class="secondary">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
+    </dialog>
+    <section class="console-panel" aria-label="Console Git e resultado" data-project-only>
+      <div class="result-heading">
+        <div><h2><span class="terminal-symbol" aria-hidden="true">›_</span> Console Git</h2><p class="hint">Execute comandos no projeto selecionado.</p></div>
+        <span id="operation-state" role="status" aria-live="polite">Carregando…</span>
+      </div>
+      <div class="output">
+        <div class="output-block">
+          <h3>stdout</h3>
+          <pre id="stdout">—</pre>
+        </div>
+        <div class="output-block" id="stderr-block" hidden>
+          <h3>stderr</h3>
+          <pre id="stderr">—</pre>
+        </div>
+      </div>
+      <form id="console-form">
+        <label class="sr-only" for="console-command">Comando Git</label>
+        <div class="command-row">
+          <input id="console-command" required maxlength="4096" placeholder="git log --oneline -10" autocomplete="off" spellcheck="false">
+          <button type="submit" class="primary">Executar <span aria-hidden="true">↵</span></button>
+        </div>
+        <p class="hint">Use git seguido de um subcomando nativo. Sem comandos de shell, pipes ou aliases.</p>
+      </form>
+    </section>
+    <dialog id="buttons-dialog" aria-labelledby="buttons-title">
+      <div class="modal-heading"><h2 id="buttons-title">Botões personalizados</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar botões personalizados">Fechar</button></div>
+      <div id="button-manager" class="custom-buttons"></div>
+      <p id="no-buttons" class="hint">Cadastre atalhos para os comandos que você usa.</p>
+      <form id="button-form">
+        <label for="button-label">Nome do botão</label>
+        <input id="button-label" required maxlength="60" placeholder="Últimos commits">
+        <label for="button-command">Comando Git</label>
+        <input id="button-command" required maxlength="4096" placeholder="git log --oneline -10" spellcheck="false">
+        <button type="submit" id="save-button" class="primary">Adicionar botão</button>
+        <button type="button" id="cancel-edit" class="secondary" hidden>Cancelar edição</button>
+      </form>
+      <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
+    </dialog>
+    <footer class="page-footer"><span>Git Web Control</span><span>Seu Git, na sua máquina.</span></footer>
+  </main>
+</body>
+</html>

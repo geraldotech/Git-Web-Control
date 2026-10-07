@@ -83,3 +83,40 @@ git rev-list --count "HEAD..@{u}" # contar commits que estão no upstream mas n�
 ```
 
 Os testes usam repositórios temporários, sem modificar o repositório configurado.
+
+## Gerar execut?vel no Windows
+
+Com o PyInstaller instalado no ambiente, execute na pasta do projeto:
+
+```powershell
+pyinstaller --clean --onefile --name appgitweb --add-data "templates;templates" --add-data "static;static" .\app.py
+```
+
+Ou use o arquivo de empacotamento que j? inclui templates e arquivos est?ticos:
+
+```powershell
+pyinstaller --clean .\appgitweb.spec
+```
+
+Execute `dist\appgitweb.exe` e abra http://localhost:3333. O Git precisa estar instalado na m?quina de destino. Para manter os projetos existentes, copie seu `config.json` para a mesma pasta do execut?vel. O painel l? e salva a configura??o nessa pasta, inclusive quando o execut?vel ? iniciado de outro diret?rio. Sem o arquivo, configure o projeto pelo painel. Mantenha o execut?vel em uma pasta em que seu usu?rio possa salvar arquivos.
+
+
+## compilar executável no Windows
+
+Para compilar o projeto em um executável no Windows, siga os passos abaixo:
+
+1. Instale o PyInstaller no ambiente virtual:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pyinstaller
+```
+
+2. Execute o PyInstaller com os parâmetros necessários:
+
+```powershell
+pyinstaller --clean --onefile --name appgitweb .\app.py
+```
+
+3. Depois copie templates, static e config.json para dist.
+
+4. Execute o arquivo gerado em `dist\appgitweb.exe` e abra http://localhost:3333 no navegador.

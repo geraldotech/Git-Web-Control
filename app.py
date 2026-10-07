@@ -7,6 +7,7 @@ import secrets
 import shlex
 import shutil
 import subprocess
+import sys
 import threading
 import tempfile
 
@@ -14,6 +15,7 @@ from flask import Flask, g, jsonify, render_template, request
 
 
 BASE_DIR = Path(__file__).resolve().parent
+CONFIG_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else BASE_DIR
 COMMANDS = {name: [name] for name in ("status", "fetch", "pull")}
 
 
@@ -22,14 +24,15 @@ def result(code=0, stdout="", stderr=""):
 
 
 def create_app(config_path=None, *, settings=None):
-    app = Flask(__name__)
+    app = Flask(__name__, template_folder=str(BASE_DIR / "templates"),
+                static_folder=str(BASE_DIR / "static"))
     app.config["MAX_CONTENT_LENGTH"] = 65536
     # Sem debug o Jinja guarda o template em memória; recarregar evita servir HTML antigo após edições.
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     token = secrets.token_urlsafe(32)
     lock = threading.Lock()
     config_error = None
-    path = Path(config_path or BASE_DIR / "config.json").resolve()
+    path = Path(config_path or CONFIG_DIR / "config.json").resolve()
     def resolve_settings(values):
         if not isinstance(values, dict):
             raise ValueError("A configuração deve ser um objeto JSON.")
