@@ -12,6 +12,56 @@ let autoFetching = false;
 let lastAutoFetch = 0;
 const AUTO_FETCH_INTERVAL = 30000;
 
+// O Git roda com color.ui=always (a saída vai por pipe, senão ele desligaria a cor), então a
+// saída chega com códigos ANSI. Aqui eles viram elementos com a cor correspondente do Git.
+const ANSI_SEQUENCE = /\x1b\[([0-9;]*)m/g;
+const ANSI_FOREGROUND = {
+  30: '#5f5f68', 31: '#ff7b86', 32: '#7ee2b8', 33: '#e5c07b', 34: '#82aaff',
+  35: '#d3a0ff', 36: '#5fd3d3', 37: '#d7d7db', 90: '#7a7a83', 91: '#ff9aa2',
+  92: '#a9f0cf', 93: '#f2d795', 94: '#a6c8ff', 95: '#e2bcff', 96: '#8ae6e6',
+  97: '#f2f2f4',
+};
+
+function stripAnsi(text) {
+  return String(text).replace(ANSI_SEQUENCE, '');
+}
+
+function renderAnsi(target, text) {
+  target.replaceChildren();
+  const source = String(text);
+  let cursor = 0;
+  let span = null;
+  let color = null;
+  let bold = false;
+  const push = (value) => {
+    if (value) (span || target).append(document.createTextNode(value));
+  };
+  const openSpan = () => {
+    span = null;
+    if (!color && !bold) return;
+    span = document.createElement('span');
+    if (color) span.style.color = color;
+    if (bold) span.style.fontWeight = '600';
+    target.append(span);
+  };
+  ANSI_SEQUENCE.lastIndex = 0;
+  let match;
+  while ((match = ANSI_SEQUENCE.exec(source))) {
+    push(source.slice(cursor, match.index));
+    cursor = ANSI_SEQUENCE.lastIndex;
+    for (const code of (match[1] ? match[1].split(';').map(Number) : [0])) {
+      if (code === 0) { color = null; bold = false; }
+      else if (code === 1) bold = true;
+      else if (code === 22) bold = false;
+      else if (code === 39) color = null;
+      else if (ANSI_FOREGROUND[code]) color = ANSI_FOREGROUND[code];
+    }
+    openSpan();
+  }
+  push(source.slice(cursor));
+  if (!target.childNodes.length) target.textContent = source;
+}
+
 async function api(path, body) {
   const mutation = body !== undefined;
   const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
@@ -32,15 +82,15 @@ async function api(path, body) {
 }
 
 function showResult(data, command) {
-  $('#stdout').textContent = data.stdout || '—';
-  $('#stderr').textContent = data.stderr || '—';
+  renderAnsi($('#stdout'), data.stdout || '—');
+  renderAnsi($('#stderr'), data.stderr || '—');
   $('#stderr-block').hidden = !(data.stderr || '').trim();
   $('#operation-state').textContent = `${command}: ${data.success ? 'concluído' : 'falhou'} (código ${data.code})`;
   $('#operation-state').className = data.success ? 'success' : 'error';
   const feedback = $('dialog[open] .modal-feedback');
   if (feedback) {
     feedback.hidden = false;
-    feedback.textContent = data.success ? (data.stdout || 'Salvo.') : (data.stderr || 'Não foi possível concluir.');
+    feedback.textContent = stripAnsi(data.success ? (data.stdout || 'Salvo.') : (data.stderr || 'Não foi possível concluir.'));
     feedback.className = `modal-feedback ${data.success ? 'success' : 'error'}`;
   }
 }
@@ -64,7 +114,7 @@ async function refreshRepository() {
   count.textContent = behind.success ? String(behind.count) : 'Indisponível';
   count.classList.toggle('pending', behind.success && behind.count > 0);
   $('#behind-details').hidden = behind.success;
-  $('#behind-error').textContent = behind.stderr || '';
+  renderAnsi($('#behind-error'), behind.stderr || '');
 }
 
 // Busca o remoto sem clique: ao abrir a página e ao voltar para a aba (com intervalo mínimo).
@@ -87,7 +137,7 @@ async function fetchFromRemote(force = false) {
         state.textContent = 'Referências remotas atualizadas automaticamente.';
       } else {
         showResult(data, 'Busca automática');
-        const detail = (data.stderr || '').trim().split('\n')[0];
+        const detail = stripAnsi(data.stderr || '').trim().split('\n')[0];
         state.className = 'hint error';
         state.textContent = `Busca automática falhou: ${detail || `código ${data.code}`}`;
       }

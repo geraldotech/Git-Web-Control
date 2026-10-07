@@ -75,11 +75,12 @@ summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 8px 0;
 .terminal-symbol { color: var(--muted); margin-right: 7px; font-family: Consolas, monospace; }
 #operation-state { font-size: 11px; overflow-wrap: anywhere; text-align: right; max-width: 50%; }
 .command-row input { background: #0c0c0e; }
-.output { margin-top: 24px; display: grid; gap: 14px; }
+.output { display: grid; gap: 14px; }
 .output-block { border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
 .output-block h3 { padding: 10px 16px; background: #19191c; border-bottom: 1px solid var(--line); }
 .output-block pre { border-radius: 0; min-height: 90px; }
 #stdout { max-height: 460px; }
+#console-form { margin-top: 24px; }
 dialog { width: min(720px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 28px; color: #eeeef0; background: #111113; border: 1px solid #36363c; border-radius: 18px; box-shadow: 0 32px 100px #000b; overflow-y: auto; }
 dialog::backdrop { background: #000b; backdrop-filter: blur(6px); }
 body:has(dialog[open]) { overflow: hidden; }

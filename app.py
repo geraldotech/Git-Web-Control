@@ -100,7 +100,9 @@ def create_app(config_path=None, *, settings=None):
                    GIT_EDITOR="false", GIT_SEQUENCE_EDITOR="false")
         try:
             process = subprocess.run(
-                [executable or g.git_path, "--no-pager", *args],
+                # A saída vai por pipe, e aí o Git desligaria a cor sozinho: forçamos como se
+                # fosse um terminal. O painel converte os códigos ANSI em elementos coloridos.
+                [executable or g.git_path, "-c", "color.ui=always", "--no-pager", *args],
                 cwd=directory or g.repo_path, capture_output=True,
                 text=True, encoding="utf-8", errors="replace", shell=False,
                 timeout=timeout, env=env, stdin=subprocess.DEVNULL,
