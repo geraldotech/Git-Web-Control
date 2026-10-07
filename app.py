@@ -1,9 +1,12 @@
 """Controle dos comandos Git definidos em AGENT.md."""
 
 import json
+import hashlib
+from datetime import datetime
 import os
 from pathlib import Path
 import secrets
+import re
 import shlex
 import shutil
 import subprocess
@@ -33,6 +36,50 @@ def create_app(config_path=None, *, settings=None):
     lock = threading.Lock()
     config_error = None
     path = Path(config_path or CONFIG_DIR / "config.json").resolve()
+    logs_dir = path.parent / "logs"
+
+    def project_logs_path(project_id):
+        name = project_id or "_unassigned"
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", name)
+                or name.upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(10)],
+                                    *[f"LPT{i}" for i in range(10)]}):
+            name = hashlib.sha256(name.encode("utf-8")).hexdigest()
+        return logs_dir / f"{name}.json"
+
+    def read_logs(project_id):
+        target = project_logs_path(project_id)
+        if not target.exists():
+            return []
+        entries = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(entries, list):
+            raise ValueError(f"{target.name} deve conter uma lista.")
+        return entries
+
+    def record(action, output):
+        entry = {"date": datetime.now().astimezone().isoformat(timespec="seconds"),
+                 "projectId": g.project["id"] if g.get("project") else None,
+                 "action": action, "output": {key: output[key] for key in
+                 ("success", "code", "stdout", "stderr")}}
+        for key in ("stdout", "stderr"):
+            entry["output"][key] = re.sub(r"\x1b\[[0-9;]*m", "", entry["output"][key])
+        try:
+            entries = read_logs(entry["projectId"])
+            logs_dir.mkdir(exist_ok=True)
+            write_json(project_logs_path(entry["projectId"]), [*entries, entry])
+        except (OSError, ValueError) as exc:
+            app.logger.error("Não foi possível gravar logs: %s", exc)
+            output["stderr"] += f"\nNão foi possível gravar logs: {exc}"
+
+    def schedule_settings(body, fallback=None):
+        schedule = body.get("autoPull", fallback or {"enabled": False, "time": "09:00"})
+        if (not isinstance(schedule, dict) or type(schedule.get("enabled")) is not bool
+                or not isinstance(schedule.get("time"), str)
+                or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", schedule["time"])):
+            raise ValueError("Informe um horário válido para o pull diário (HH:MM).")
+        cleaned = {"enabled": schedule["enabled"], "time": schedule["time"]}
+        if fallback and fallback.get("lastRun"):
+            cleaned["lastRun"] = fallback["lastRun"]
+        return cleaned
     def resolve_settings(values):
         if not isinstance(values, dict):
             raise ValueError("A configuração deve ser um objeto JSON.")
@@ -110,11 +157,13 @@ def create_app(config_path=None, *, settings=None):
                 text=True, encoding="utf-8", errors="replace", shell=False,
                 timeout=timeout, env=env, stdin=subprocess.DEVNULL,
             )
-            return result(process.returncode, process.stdout, process.stderr)
+            output = result(process.returncode, process.stdout, process.stderr)
         except subprocess.TimeoutExpired:
-            return result(-1, stderr=f"Tempo limite de {timeout} segundos excedido ao executar Git.")
+            output = result(-1, stderr=f"Tempo limite de {timeout} segundos excedido ao executar Git.")
         except OSError as exc:
-            return result(-1, stderr=f"Não foi possível executar Git: {exc}")
+            output = result(-1, stderr=f"Não foi possível executar Git: {exc}")
+        record("git " + shlex.join(args), output)
+        return output
 
     def validate_repo():
         if g.config_error:
@@ -164,22 +213,104 @@ def create_app(config_path=None, *, settings=None):
             if error:
                 return jsonify(error), 503
             output = action()
+            if request.method == "POST":
+                record(request.path.removeprefix("/api/"), output)
             return jsonify(output), 200 if output["success"] else 400
         finally:
             lock.release()
 
     def persist(values):
+        write_json(path, values)
+
+    def write_json(target, values):
         temporary = None
         try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
                                              suffix=".tmp", delete=False) as handle:
                 temporary = Path(handle.name)
                 json.dump(values, handle, ensure_ascii=False, indent=2)
                 handle.write("\n")
-            os.replace(temporary, path)
+            os.replace(temporary, target)
         finally:
             if temporary and temporary.exists():
                 temporary.unlink()
+
+    def migrate_logs():
+        legacy = path.parent / "logs.json"
+        if not legacy.exists():
+            return
+        entries = json.loads(legacy.read_text(encoding="utf-8"))
+        if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+            raise ValueError("logs.json deve conter uma lista de registros.")
+        grouped = {}
+        for entry in entries:
+            grouped.setdefault(entry.get("projectId"), []).append(entry)
+        logs_dir.mkdir(exist_ok=True)
+        for project_id, imported in grouped.items():
+            existing = read_logs(project_id)
+            # A migração pode ser retomada se uma gravação falhar no meio.
+            merged = [*existing, *[entry for entry in imported if entry not in existing]]
+            merged.sort(key=lambda entry: entry.get("date", ""))
+            write_json(project_logs_path(project_id), merged)
+        legacy.rename(path.parent / f"logs.legacy-{secrets.token_hex(4)}.json")
+
+    try:
+        migrate_logs()
+    except (OSError, ValueError, TypeError) as exc:
+        app.logger.error("Não foi possível migrar logs.json: %s", exc)
+
+    @app.get("/logs")
+    def logs_page():
+        with lock:
+            error = select_project()
+            if error:
+                return error
+            try:
+                entries = read_logs(g.project["id"])
+            except (OSError, ValueError) as exc:
+                return str(exc), 503
+            return render_template("logs.html", project=g.project, entries=list(reversed(entries)))
+
+    def scheduled_pull(now=None):
+        now = now or datetime.now().astimezone()
+        today = now.date().isoformat()
+        if not lock.acquire(blocking=False):
+            return
+        try:
+            with app.app_context():
+                for project in list(projects):
+                    schedule = project.get("autoPull", {})
+                    if (not schedule.get("enabled") or schedule.get("lastRun") == today
+                            or now.strftime("%H:%M") < schedule.get("time", "99:99")):
+                        continue
+                    g.project = project
+                    try:
+                        # Persistir antes do Git impede repetição depois de reiniciar o servidor.
+                        persist_project({**project, "autoPull": {**schedule, "lastRun": today}})
+                        g.repo_path, g.git_path = resolve_settings(project)
+                        g.config_error = None
+                        output = validate_repo() or run(["pull"])
+                    except (OSError, ValueError, TypeError) as exc:
+                        output = result(-1, stderr=str(exc))
+                    record(f"Agendamento: git pull diário às {schedule.get('time')}", output)
+        finally:
+            lock.release()
+
+    stop_scheduler = threading.Event()
+
+    def start_scheduler():
+        def worker():
+            while not stop_scheduler.wait(15):
+                try:
+                    scheduled_pull()
+                except Exception:
+                    app.logger.exception("Falha no agendador de pull")
+        thread = threading.Thread(target=worker, name="auto-git-pull", daemon=True)
+        thread.start()
+
+    app.extensions["scheduled_pull"] = scheduled_pull
+    app.extensions["start_scheduler"] = start_scheduler
+    app.extensions["stop_scheduler"] = stop_scheduler
 
     @app.get("/api/settings")
     def get_settings():
@@ -205,8 +336,10 @@ def create_app(config_path=None, *, settings=None):
                 if not check["success"] or check["stdout"].strip() != "true":
                     return result(-1, stderr="repoPath não é um repositório Git com árvore de trabalho.\n" + check["stderr"])
                 values = {"id": secrets.token_hex(16), "name": name,
-                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"], "buttons": []}
+                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"], "buttons": [],
+                          "autoPull": schedule_settings(body)}
                 persist_project(values, new=True)
+                g.project = values
             except (OSError, ValueError, TypeError) as exc:
                 return result(-1, stderr=f"Não foi possível adicionar: {exc}")
             return dict(result(stdout="Projeto adicionado."), settings=values, resolvedRepoPath=str(new_repo))
@@ -237,7 +370,8 @@ def create_app(config_path=None, *, settings=None):
                 if not check["success"] or check["stdout"].strip() != "true":
                     return result(-1, stderr="repoPath não é um repositório Git com árvore de trabalho.\n" + check["stderr"])
                 values = {**g.project, "name": project_name(body, g.project["name"]),
-                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"]}
+                          "gitPath": body.get("gitPath") or "git", "repoPath": body["repoPath"],
+                          "autoPull": schedule_settings(body, g.project.get("autoPull"))}
                 persist_project(values)
             except (OSError, ValueError, TypeError) as exc:
                 return result(-1, stderr=f"Não foi possível salvar: {exc}")
@@ -398,4 +532,6 @@ def create_app(config_path=None, *, settings=None):
 
 
 if __name__ == "__main__":
-    create_app().run(host="0.0.0.0", port=3333, debug=False)
+    app = create_app()
+    app.extensions["start_scheduler"]()
+    app.run(host="0.0.0.0", port=3333, debug=False)

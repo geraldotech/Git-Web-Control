@@ -29,6 +29,17 @@ button:disabled, input:disabled, select:disabled { opacity: .45; cursor: wait; }
 .accent { background: #163229; border-color: #315747; color: #b9f1d9; }
 .accent:hover { background: #244c3d; border-color: #56816d; }
 .secondary { background: transparent; }
+.checkbox-label { display: flex; align-items: center; gap: 10px; }
+.checkbox-label input { width: 18px; min-height: 18px; }
+.button-link { display: inline-flex; align-items: center; min-height: 40px; padding: 9px 18px; border: 1px solid #38383e; border-radius: 999px; color: #eeeef0; text-decoration: none; }
+.button-link:hover { background: #252528; border-color: #55555e; }
+.logs-table-wrap { overflow-x: auto; }
+.logs-table { width: 100%; border-collapse: collapse; }
+.logs-table th, .logs-table td { padding: 14px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.logs-table th { color: var(--muted); font-size: 12px; }
+.logs-table td:first-child { white-space: nowrap; font-size: 12px; }
+.logs-table td:nth-child(2) { overflow-wrap: anywhere; min-width: 180px; }
+.logs-table td:last-child { min-width: 300px; }
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .header-actions { padding: 4px; border: 1px solid var(--line); border-radius: 999px; gap: 2px; }
 .header-actions button { border-color: transparent; min-height: 36px; padding: 8px 14px; }

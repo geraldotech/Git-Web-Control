@@ -210,6 +210,9 @@ function fillSettings(adding = false) {
   $('#project-name').value = adding ? '' : (currentSettings?.name || '');
   $('#git-path').value = adding ? 'git' : (currentSettings?.gitPath || 'git');
   $('#repo-input').value = adding ? '' : (currentSettings?.repoPath || '');
+  $('#auto-pull-enabled').checked = !adding && Boolean(currentSettings?.autoPull?.enabled);
+  $('#auto-pull-time').value = adding ? '09:00' : (currentSettings?.autoPull?.time || '09:00');
+  $('#auto-pull-options').hidden = !$('#auto-pull-enabled').checked;
 }
 
 async function loadProject() {
@@ -437,6 +440,7 @@ $('#settings-form').addEventListener('submit', (event) => {
   perform('Salvar configuração', async () => {
     const data = await api(addingProject ? 'projects' : 'settings', {
       name: $('#project-name').value, gitPath: $('#git-path').value, repoPath: $('#repo-input').value,
+      autoPull: { enabled: $('#auto-pull-enabled').checked, time: $('#auto-pull-time').value || '09:00' },
     });
     showResult(data, 'Salvar configuração');
     if (data.success) {
@@ -446,6 +450,12 @@ $('#settings-form').addEventListener('submit', (event) => {
       await loadProject();
     }
   });
+});
+$('#auto-pull-enabled').addEventListener('change', () => {
+  $('#auto-pull-options').hidden = !$('#auto-pull-enabled').checked;
+});
+$('#open-logs').addEventListener('click', () => {
+  if (projectId) window.location.href = `/logs?projectId=${encodeURIComponent(projectId)}`;
 });
 $('#button-form').addEventListener('submit', (event) => {
   event.preventDefault();

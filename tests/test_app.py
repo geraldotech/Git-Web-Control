@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 import re
 import shutil
@@ -61,6 +62,64 @@ class GitAppTests(unittest.TestCase):
         self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
         file.unlink()
         self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
+
+    def test_daily_pull_persists_runs_once_and_logs_by_project(self):
+        remote = self.root / "scheduled.git"
+        self.git("init", "--bare", str(remote))
+        self.git("remote", "add", "origin", str(remote))
+        self.git("push", "-u", "origin", "main")
+        response = self.client.post("/api/settings", headers=self.headers, json={
+            "repoPath": str(self.repo), "autoPull": {"enabled": True, "time": "10:00"}})
+        self.assertTrue(response.json["success"], response.json)
+        project_id = response.json["settings"]["id"]
+        tick = self.app.extensions["scheduled_pull"]
+        tick(datetime(2026, 10, 7, 9, 59))
+        self.assertNotIn("lastRun", self.client.get("/api/settings").json["settings"]["autoPull"])
+        tick(datetime(2026, 10, 7, 10, 0))
+        tick(datetime(2026, 10, 7, 12, 0))
+        restarted = create_app(self.config)
+        restarted.extensions["scheduled_pull"](datetime(2026, 10, 7, 15, 0))
+        entries = json.loads((self.root / "logs" / f"{project_id}.json").read_text(encoding="utf-8"))
+        scheduled = [entry for entry in entries if entry["action"].startswith("Agendamento:")]
+        self.assertEqual(len(scheduled), 1)
+        self.assertTrue(scheduled[0]["output"]["success"], scheduled)
+        self.assertEqual(scheduled[0]["projectId"], project_id)
+        page = self.client.get("/logs?projectId=" + project_id)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Agendamento:", page.get_data(as_text=True))
+        second, _ = self.add_project()
+        self.assertNotIn("Agendamento:", self.client.get("/logs?projectId=" + second["id"]).get_data(as_text=True))
+        self.assertEqual(self.client.get("/logs?projectId=missing").status_code, 404)
+        restarted.extensions["scheduled_pull"](datetime(2026, 10, 8, 10, 0))
+        entries = json.loads((self.root / "logs" / f"{project_id}.json").read_text(encoding="utf-8"))
+        self.assertEqual(sum(entry["action"].startswith("Agendamento:") for entry in entries), 2)
+
+    def test_schedule_rejects_invalid_time_and_can_be_disabled(self):
+        for schedule in ({"enabled": True, "time": "25:00"}, {"enabled": "yes", "time": "10:00"}, None):
+            response = self.client.post("/api/settings", headers=self.headers, json={
+                "repoPath": str(self.repo), "autoPull": schedule})
+            self.assertFalse(response.json["success"])
+        self.client.post("/api/settings", headers=self.headers, json={
+            "repoPath": str(self.repo), "autoPull": {"enabled": False, "time": "10:00"}})
+        with patch("app.subprocess.run") as run:
+            self.app.extensions["scheduled_pull"](datetime(2026, 10, 7, 12, 0))
+            run.assert_not_called()
+
+    def test_legacy_logs_migrate_to_project_files_without_duplicates(self):
+        entries = [{"projectId": project_id, "date": "2026-10-07T10:00:00-03:00",
+                    "action": "legacy action", "output": {"success": True, "code": 0,
+                    "stdout": "saved", "stderr": ""}} for project_id in ("default", "second")]
+        legacy = self.root / "logs.json"
+        legacy.write_text(json.dumps(entries), encoding="utf-8")
+        create_app(self.config, settings={"repoPath": str(self.repo)})
+        self.assertFalse(legacy.exists())
+        self.assertEqual(len(list(self.root.glob("logs.legacy-*.json"))), 1)
+        for entry in entries:
+            target = self.root / "logs" / (entry["projectId"] + ".json")
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), [entry])
+        legacy.write_text(json.dumps(entries), encoding="utf-8")
+        create_app(self.config, settings={"repoPath": str(self.repo)})
+        self.assertEqual(json.loads((self.root / "logs" / "default.json").read_text(encoding="utf-8")), [entries[0]])
 
     def test_direct_commit_adds_commits_and_pushes(self):
         remote = self.root / "remote.git"

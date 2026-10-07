@@ -93,6 +93,13 @@
           <div><label for="repo-input">repoPath</label><p class="hint" id="repo-input-hint">Pasta local do repositório.</p></div>
           <input id="repo-input" required value="{{ settings.get('repoPath', '') }}" placeholder="D:\Dev" spellcheck="false" aria-describedby="repo-input-hint">
         </div>
+        <div class="setting-row">
+          <div><label for="auto-pull-enabled">Auto git pull</label><p class="hint">Todos os dias, no horário local da máquina. O servidor precisa estar aberto.</p></div>
+          <div>
+            <label class="checkbox-label"><input type="checkbox" id="auto-pull-enabled"> Ativar pull diário</label>
+            <div id="auto-pull-options" hidden><label for="auto-pull-time">Todos os dias às</label><input type="time" id="auto-pull-time" value="09:00"></div>
+          </div>
+        </div>
         <div class="form-footer"><button type="submit" id="save-settings" class="primary">Salvar configuração</button></div>
       </form>
       <div id="delete-project-area" class="delete-project-area" hidden>
@@ -114,7 +121,7 @@
     <section class="console-panel" aria-label="Console Git e resultado" data-project-only>
       <div class="result-heading">
         <div><h2><span class="terminal-symbol" aria-hidden="true">›_</span> Console Git</h2><p class="hint">Execute comandos no projeto selecionado.</p></div>
-        <span id="operation-state" role="status" aria-live="polite">Carregando…</span>
+        <div class="actions"><button type="button" id="open-logs">Logs</button><span id="operation-state" role="status" aria-live="polite">Carregando…</span></div>
       </div>
       <div class="output">
         <div class="output-block">

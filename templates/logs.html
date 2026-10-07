@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logs — {{ project.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main>
+    <header><div><h1>Logs — {{ project.name }}</h1><p class="subtitle">Comandos Git, ações e agendamentos do projeto.</p></div><div class="actions"><a class="button-link" href="{{ url_for('index', projectId=project.id) }}">Voltar ao painel</a><a class="button-link" href="{{ url_for('logs_page', projectId=project.id) }}">Atualizar</a></div></header>
+    <section>
+      {% if entries %}
+      <div class="logs-table-wrap"><table class="logs-table">
+        <thead><tr><th>Data</th><th>Ação</th><th>Saída</th></tr></thead>
+        <tbody>{% for entry in entries %}<tr>
+          <td><time datetime="{{ entry.date }}">{{ entry.date }}</time></td>
+          <td>{{ entry.action }}<p class="{{ 'success' if entry.output.success else 'error' }}">{{ 'Concluído' if entry.output.success else 'Falhou' }} ({{ entry.output.code }})</p></td>
+          <td><pre>{{ entry.output.stdout or '—' }}</pre>{% if entry.output.stderr %}<pre class="error">{{ entry.output.stderr }}</pre>{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="hint">Nenhum registro para este projeto.</p>{% endif %}
+    </section>
+  </main>
+</body>
+</html>
