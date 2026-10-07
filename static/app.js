@@ -401,6 +401,20 @@ document.querySelectorAll('[data-command]').forEach((button) => {
 });
 $('#open-switch').addEventListener('click', openSwitchDialog);
 $('#switch-form').addEventListener('submit', (event) => { event.preventDefault(); submitSwitch(); });
+$('#commit-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const message = $('#commit-message').value.trim();
+  if (!message) { $('#commit-message').focus(); return; }
+  perform('Commit direto', async () => {
+    const data = await api('git/direct-commit', { message });
+    showResult(data, 'Commit direto');
+    if (data.success) {
+      $('#commit-form').reset();
+      $('#commit-dialog').close();
+    }
+    await refreshRepository();
+  });
+});
 $('#console-form').addEventListener('submit', (event) => {
   event.preventDefault();
   execute('console', { command: $('#console-command').value });

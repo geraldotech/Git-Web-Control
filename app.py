@@ -326,6 +326,24 @@ def create_app(config_path=None, *, settings=None):
     def pull():
         return execute(lambda: run(COMMANDS["pull"]))
 
+    @app.post("/api/git/direct-commit")
+    def direct_commit():
+        def action():
+            body = request.get_json(silent=True)
+            message = body.get("message") if isinstance(body, dict) else None
+            if (not isinstance(message, str) or not message.strip()
+                    or len(message) > 4096 or "\x00" in message):
+                return result(-1, stderr="Informe uma mensagem de commit de até 4096 caracteres.")
+            stdout, stderr = [], []
+            for args in (["add", "."], ["commit", "-m", message.strip()], ["push"]):
+                output = run(args)
+                stdout.append(f"$ git {args[0]}\n" + output["stdout"])
+                stderr.append(output["stderr"])
+                if not output["success"]:
+                    break
+            return result(output["code"], "\n".join(stdout), "\n".join(filter(None, stderr)))
+        return execute(action)
+
     @app.get("/api/git/branches")
     def branches():
         def action():

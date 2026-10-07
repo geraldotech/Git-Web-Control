@@ -50,13 +50,24 @@
         <button type="button" id="open-switch" aria-haspopup="dialog"><span aria-hidden="true">⇄</span> Switch</button>
         <button data-command="status">Status</button>
         <button data-command="fetch">Fetch</button>
-        <button data-command="pull" class="accent">Pull</button>
+        <button data-command="pull">Pull</button>
+        <button type="button" data-open-dialog="commit-dialog" aria-haspopup="dialog">Commit direto</button>
       </div>
       <div id="custom-buttons" class="actions shortcuts" aria-label="Atalhos personalizados" hidden></div>
       <p class="hint">As referências remotas são atualizadas automaticamente. Use Fetch para buscar agora ou Switch para trocar de branch.</p>
       <p class="hint" id="auto-fetch-state" role="status" aria-live="polite" hidden></p>
       <details id="behind-details" hidden><summary>Motivo da contagem indisponível</summary><pre id="behind-error"></pre></details>
     </section>
+    <dialog id="commit-dialog" aria-labelledby="commit-title">
+      <div class="modal-heading"><h2 id="commit-title">Commit direto</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar commit direto">Fechar</button></div>
+      <form id="commit-form">
+        <label for="commit-message">Mensagem do commit</label>
+        <input id="commit-message" required maxlength="4096" placeholder="Ex.: Corrige cadastro" autocomplete="off">
+        <p class="hint">Adiciona todas as alterações, cria o commit e executa git push no projeto selecionado.</p>
+        <button type="submit" class="primary">Commit e push</button>
+      </form>
+      <p class="modal-feedback" role="status" aria-live="polite" hidden></p>
+    </dialog>
     <dialog id="switch-dialog" aria-labelledby="switch-title">
       <div class="modal-heading"><h2 id="switch-title">Trocar branch</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar troca de branch">Fechar</button></div>
       <ul id="branch-options" class="branch-list" aria-label="Branches"></ul>

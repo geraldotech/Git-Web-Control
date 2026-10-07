@@ -48,6 +48,39 @@ class GitAppTests(unittest.TestCase):
         self.assertTrue(switched.json["success"], switched.json)
         self.assertEqual(self.git("branch", "--show-current"), "feature/test")
 
+    def test_direct_commit_adds_commits_and_pushes(self):
+        remote = self.root / "remote.git"
+        self.git("init", "--bare", str(remote))
+        self.git("remote", "add", "origin", str(remote))
+        self.git("push", "-u", "origin", "main")
+        (self.repo / "new.txt").write_text("new")
+        message = 'Corrige cadastro "nome"; $(echo literal)'
+        response = self.post("direct-commit", json={"message": message})
+        self.assertTrue(response.json["success"], response.json)
+        self.assertEqual(self.git("log", "-1", "--format=%s"), message)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertEqual(self.git("rev-parse", "HEAD"),
+                         self.git("rev-parse", "main", cwd=remote))
+        self.assertEqual(self.git("show", "main:new.txt", cwd=remote), "new")
+
+    def test_direct_commit_validation_and_stops_on_failure(self):
+        self.assertEqual(self.client.post("/api/git/direct-commit").status_code, 403)
+        for body in ({}, [], {"message": " "}, {"message": 123},
+                     {"message": "x" * 4097}, {"message": "bad\x00message"}):
+            with patch("app.subprocess.run", wraps=subprocess.run) as run:
+                response = self.post("direct-commit", json=body)
+                self.assertFalse(response.json["success"])
+                self.assertEqual(run.call_count, 1)  # Repository validation only.
+        with patch("app.subprocess.run", wraps=subprocess.run) as run:
+            response = self.post("direct-commit", json={"message": "No changes"})
+            self.assertFalse(response.json["success"])
+            self.assertFalse(any("push" in call.args[0] for call in run.call_args_list))
+        (self.repo / "local.txt").write_text("local")
+        response = self.post("direct-commit", json={"message": "Local commit"})
+        self.assertFalse(response.json["success"])  # No remote configured.
+        self.assertIn("$ git push", response.json["stdout"])
+        self.assertEqual(self.git("log", "-1", "--format=%s"), "Local commit")
+
     def test_rejects_invalid_branches_and_requests(self):
         for branch in ("--discard-changes", "-", "@{-1}", "a b", "a\nb", "HEAD", "", None, 123):
             with self.subTest(branch=branch):
