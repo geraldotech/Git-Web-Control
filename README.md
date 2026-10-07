@@ -1,4 +1,7 @@
-# Git Web Controlx
+# Git Web Control
+
+<img width="1190" height="863" alt="image" src="https://github.com/user-attachments/assets/28e11f4d-39a7-4cb1-960c-96d2a4107e64" />
+
 
 Aplicação Flask para controlar múltiplos repositórios Git da máquina pelo navegador: status, fetch, pull, switch, console Git e botões personalizados por projeto.
 
