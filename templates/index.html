@@ -123,6 +123,7 @@
         <div><h2><span class="terminal-symbol" aria-hidden="true">›_</span> Console Git</h2><p class="hint">Execute comandos no projeto selecionado.</p></div>
         <div class="actions"><button type="button" id="open-logs">Logs</button><span id="operation-state" role="status" aria-live="polite">Carregando…</span></div>
       </div>
+      <div class="terminal">
       <div class="output">
         <div class="output-block">
           <h3>stdout</h3>
@@ -136,11 +137,13 @@
       <form id="console-form">
         <label class="sr-only" for="console-command">Comando Git</label>
         <div class="command-row">
-          <input id="console-command" required maxlength="4096" placeholder="git log --oneline -10" autocomplete="off" spellcheck="false">
-          <button type="submit" class="primary">Executar <span aria-hidden="true">↵</span></button>
+          <span class="terminal-prompt" aria-hidden="true">$</span>
+          <input id="console-command" required maxlength="4096" placeholder="git log --oneline -10" autocomplete="off" spellcheck="false" enterkeyhint="send" aria-describedby="console-hint">
+          <button type="submit">Executar <span aria-hidden="true">↵</span></button>
         </div>
-        <p class="hint">Use git seguido de um subcomando nativo. Sem comandos de shell, pipes ou aliases.</p>
       </form>
+      </div>
+      <p class="hint" id="console-hint">Use git seguido de um subcomando nativo. Sem comandos de shell, pipes ou aliases.</p>
     </section>
     <dialog id="buttons-dialog" aria-labelledby="buttons-title">
       <div class="modal-heading"><h2 id="buttons-title">Botões personalizados</h2><button type="button" class="secondary" data-close-dialog aria-label="Fechar botões personalizados">Fechar</button></div>

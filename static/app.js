@@ -434,9 +434,15 @@ $('#commit-form').addEventListener('submit', (event) => {
     await refreshRepository();
   });
 });
-$('#console-form').addEventListener('submit', (event) => {
+$('#console-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  execute('console', { command: $('#console-command').value });
+  if (busy) return;
+  const input = $('#console-command');
+  const command = input.value.trim();
+  if (!command) { input.focus(); return; }
+  input.value = '';
+  await execute('console', { command });
+  input.focus();
 });
 $('#settings-form').addEventListener('submit', (event) => {
   event.preventDefault();
