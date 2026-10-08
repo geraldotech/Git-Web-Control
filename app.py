@@ -163,7 +163,6 @@ def create_app(config_path=None, *, settings=None):
             output = result(-1, stderr=f"Tempo limite de {timeout} segundos excedido ao executar Git.")
         except OSError as exc:
             output = result(-1, stderr=f"Não foi possível executar Git: {exc}")
-        record("git " + shlex.join(args), output)
         return output
 
     def validate_repo():
@@ -202,7 +201,7 @@ def create_app(config_path=None, *, settings=None):
             return render_template("index.html", repo_path=str(g.repo_path), csrf_token=token,
                                    settings=g.project)
 
-    def execute(action, *, require_repo=True, require_project=True):
+    def execute(action, *, require_repo=True, require_project=True, log_action=None):
         if not lock.acquire(blocking=False):
             return jsonify(result(-1, stderr="Há outra operação Git em andamento.")), 409
         try:
@@ -211,11 +210,14 @@ def create_app(config_path=None, *, settings=None):
                 if selection_error:
                     return selection_error
             error = validate_repo() if require_repo else None
+            should_log = log_action if log_action is not None else request.method == "POST"
             if error:
+                if should_log:
+                    record(request.path.removeprefix("/api/"), error)
                 return jsonify(error), 503
             output = action()
-            if request.method == "POST":
-                record(request.path.removeprefix("/api/"), output)
+            if should_log:
+                record(g.get("log_action", request.path.removeprefix("/api/")), output)
             return jsonify(output), 200 if output["success"] else 400
         finally:
             lock.release()
@@ -270,7 +272,24 @@ def create_app(config_path=None, *, settings=None):
                 entries = read_logs(g.project["id"])
             except (OSError, ValueError) as exc:
                 return str(exc), 503
-            return render_template("logs.html", project=g.project, entries=list(reversed(entries)))
+            return render_template("logs.html", project=g.project, entries=list(reversed(entries)),
+                                   csrf_token=token)
+
+    @app.post("/api/logs/clear")
+    def clear_logs():
+        if not request.args.get("projectId"):
+            return jsonify(result(-1, stderr="Informe o projeto para limpar os logs.")), 400
+
+        def action():
+            try:
+                target = project_logs_path(g.project["id"])
+                if target.exists():
+                    write_json(target, [])
+            except OSError as exc:
+                return result(-1, stderr=f"Não foi possível limpar os logs: {exc}")
+            return result(stdout="Logs limpos.")
+
+        return execute(action, require_repo=False, log_action=False)
 
     def scheduled_pull(now=None):
         now = now or datetime.now().astimezone()
@@ -418,6 +437,7 @@ def create_app(config_path=None, *, settings=None):
                 args = parse_command(body.get("command") if isinstance(body, dict) else None)
             except ValueError as exc:
                 return result(-1, stderr=str(exc))
+            g.log_action = "git " + shlex.join(args)
             return run(args)
         return execute(action)
 
@@ -445,7 +465,8 @@ def create_app(config_path=None, *, settings=None):
 
     @app.get("/api/git/status")
     def status():
-        return execute(lambda: run(COMMANDS["status"]))
+        return execute(lambda: run(COMMANDS["status"]),
+                       log_action=request.headers.get("X-Manual-Action") == "true")
 
     @app.get("/api/git/changes")
     def changes():
@@ -463,7 +484,7 @@ def create_app(config_path=None, *, settings=None):
     def autofetch():
         # Usado pelo painel ao abrir a página: prazo curto para não segurar o lock do Git
         # quando o remoto (VPN) está fora; a falha é exibida, não interrompe o carregamento.
-        return execute(lambda: run(COMMANDS["fetch"], timeout=30))
+        return execute(lambda: run(COMMANDS["fetch"], timeout=30), log_action=False)
 
     @app.post("/api/git/pull")
     def pull():

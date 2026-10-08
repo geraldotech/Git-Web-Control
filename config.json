@@ -2,7 +2,7 @@
   "projects": [
     {
       "gitPath": "git",
-      "repoPath": "C:\\Dev\\Github\\Git-Web-Control",
+      "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
       "buttons": [
         {
           "label": "Tag",
@@ -17,7 +17,7 @@
       "name": "webgitcontrol",
       "autoPull": {
         "enabled": true,
-        "time": "17:52",
+        "time": "22:04",
         "lastRun": "2026-10-07"
       }
     }

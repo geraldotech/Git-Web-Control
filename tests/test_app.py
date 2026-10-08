@@ -63,6 +63,58 @@ class GitAppTests(unittest.TestCase):
         file.unlink()
         self.assertTrue(self.client.get("/api/git/changes").json["hasChanges"])
 
+    def test_clear_logs_only_affects_selected_project(self):
+        self.post("fetch", json={})
+        second, _ = self.add_project()
+        target = self.root / "logs" / "default.json"
+        other = self.root / "logs" / f"{second['id']}.json"
+        previous_other = other.read_bytes()
+        page = self.client.get("/logs?projectId=default").get_data(as_text=True)
+        self.assertIn('id="clear-logs"', page)
+        self.assertIn(self.headers["X-CSRF-Token"], page)
+        with patch("app.subprocess.run") as run:
+            response = self.client.post("/api/logs/clear?projectId=default", headers=self.headers)
+            self.assertTrue(response.json["success"], response.json)
+            run.assert_not_called()
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), [])
+        self.assertEqual(other.read_bytes(), previous_other)
+        self.assertIn("Nenhum registro", self.client.get("/logs?projectId=default").get_data(as_text=True))
+        self.assertTrue(self.client.post("/api/logs/clear?projectId=default", headers=self.headers).json["success"])
+
+    def test_clear_logs_rejects_invalid_requests_and_preserves_logs_on_failure(self):
+        self.post("fetch", json={})
+        target = self.root / "logs" / "default.json"
+        original = target.read_bytes()
+        self.assertEqual(self.client.post("/api/logs/clear?projectId=default").status_code, 403)
+        for query, status in (("", 400), ("?projectId=missing", 404)):
+            self.assertEqual(self.client.post("/api/logs/clear" + query, headers=self.headers).status_code, status)
+        with patch("app.os.replace", side_effect=PermissionError("read-only")):
+            response = self.client.post("/api/logs/clear?projectId=default", headers=self.headers)
+            self.assertFalse(response.json["success"])
+        self.assertEqual(target.read_bytes(), original)
+
+    def test_automatic_refresh_does_not_write_logs(self):
+        for endpoint in ("status", "branches", "behind", "changes"):
+            self.client.get("/api/git/" + endpoint)
+        self.assertTrue(self.post("autofetch", json={}).json["success"])
+        self.git("remote", "add", "origin", str(self.root / "missing.git"))
+        self.assertFalse(self.post("autofetch", json={}).json["success"])
+        self.assertFalse((self.root / "logs").exists())
+
+    def test_manual_actions_log_once_without_internal_queries(self):
+        self.client.get("/api/git/status", headers={"X-Manual-Action": "true"})
+        self.post("fetch", json={})
+        self.post("console", json={"command": "git status"})
+        self.post("switch", json={"branch": "feature/test"})
+        self.assertFalse(self.post("pull", json={}).json["success"])
+        entries = json.loads((self.root / "logs" / "default.json").read_text(encoding="utf-8"))
+        self.assertEqual([entry["action"] for entry in entries],
+                         ["git/status", "git/fetch", "git status", "git/switch", "git/pull"])
+        self.assertFalse(entries[-1]["output"]["success"])
+        self.client.get("/api/git/status")
+        self.client.get("/api/git/branches")
+        self.assertEqual(json.loads((self.root / "logs" / "default.json").read_text(encoding="utf-8")), entries)
+
     def test_daily_pull_persists_runs_once_and_logs_by_project(self):
         remote = self.root / "scheduled.git"
         self.git("init", "--bare", str(remote))
@@ -80,6 +132,7 @@ class GitAppTests(unittest.TestCase):
         restarted = create_app(self.config)
         restarted.extensions["scheduled_pull"](datetime(2026, 10, 7, 15, 0))
         entries = json.loads((self.root / "logs" / f"{project_id}.json").read_text(encoding="utf-8"))
+        self.assertEqual([entry["action"] for entry in entries], ["settings", "git pull schedulable"])
         scheduled = [entry for entry in entries if entry["action"].startswith("git pull schedulable")]
         self.assertEqual(len(scheduled), 1)
         self.assertTrue(scheduled[0]["output"]["success"], scheduled)

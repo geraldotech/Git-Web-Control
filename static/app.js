@@ -62,12 +62,15 @@ function renderAnsi(target, text) {
   if (!target.childNodes.length) target.textContent = source;
 }
 
-async function api(path, body) {
+async function api(path, body, manual = false) {
   const mutation = body !== undefined;
   const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
   const response = await fetch(`/api/${path}${query}`, {
     method: mutation ? 'POST' : 'GET',
-    headers: mutation ? { 'Content-Type': 'application/json', 'X-CSRF-Token': token } : {},
+    headers: {
+      ...(mutation ? { 'Content-Type': 'application/json', 'X-CSRF-Token': token } : {}),
+      ...(manual ? { 'X-Manual-Action': 'true' } : {}),
+    },
     ...(mutation ? { body: JSON.stringify(body) } : {}),
   });
   const text = await response.text();
@@ -178,7 +181,7 @@ async function perform(label, task) {
 
 function execute(command, body) {
   return perform(command, async () => {
-    const data = await api(`git/${command}`, command === 'status' ? undefined : (body || {}));
+    const data = await api(`git/${command}`, command === 'status' ? undefined : (body || {}), true);
     showResult(data, body?.command || command);
     await refreshRepository();
   });
