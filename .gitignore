@@ -3,4 +3,4 @@ __pycache__/
 *.pyc
 logs.json
 logs/
-logs.legacy-*.json
+config.json

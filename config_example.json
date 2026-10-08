@@ -1,0 +1,25 @@
+{
+  "projects": [
+    {
+      "gitPath": "git",
+      "repoPath": "C:\\Users\\geral\\Dev\\webgitcontrol",
+      "buttons": [
+        {
+          "label": "Tag",
+          "command": "git tag"
+        },
+        {
+          "label": "Últimos",
+          "command": "git log -10 --oneline"
+        }
+      ],
+      "id": "default",
+      "name": "webgitcontrol",
+      "autoPull": {
+        "enabled": true,
+        "time": "22:04",
+        "lastRun": "2026-10-07"
+      }
+    }
+  ]
+}
